@@ -2,7 +2,7 @@ package model
 
 // Message is what is transferred between the client and server, contains the username and body of the message
 type Message struct {
-	Sender string
+	Sender string // TODO: make username-sender usage consistent, refactor
 	Body   string
 }
 

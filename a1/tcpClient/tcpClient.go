@@ -11,8 +11,18 @@ import (
 	"strings"
 )
 
-func createUser() (string, error) {
-	reader := bufio.NewReader(os.Stdin)
+// CreateReader creates a bufio.Reader
+type CreateReader func() *bufio.Reader
+
+// Client contains our username, and helper methods
+type Client struct {
+	UserName     string
+	createReader CreateReader
+}
+
+// CreateUser reads in the username via stdin
+func (client *Client) CreateUser() (string, error) {
+	reader := client.createReader()
 	fmt.Print("Please enter your desired user name: ")
 	text, err := reader.ReadString('\n')
 	if err != nil {
@@ -22,13 +32,25 @@ func createUser() (string, error) {
 	return text, nil
 }
 
+// CreateReader this is split out for testing purposes
+func createBufioReader() *bufio.Reader {
+	return bufio.NewReader(os.Stdin)
+}
+
+func constructMessage(userName string, body string) model.Message {
+	return model.Message{Sender: userName, Body: strings.TrimSpace(body)}
+}
+
 // Create makes a new tcp client and waits to send a message to the target server.
 func Create() {
 	var userName string
 	var err error
+	// Create the client
+	client := &Client{createReader: createBufioReader}
+
 	// Before dialing, we set up the username
 	for {
-		userName, err = createUser()
+		userName, err = client.CreateUser()
 		if err != nil {
 			fmt.Println("Failed to create user, please try again.")
 			continue
@@ -51,7 +73,7 @@ func Create() {
 			os.Exit(1)
 		}
 		// Format the message for serialization
-		m := model.Message{Sender: userName, Body: strings.TrimSpace(text)}
+		m := constructMessage(userName, text)
 		// Use gob lib to encode the data
 		enc := gob.NewEncoder(c) // to write
 		dec := gob.NewDecoder(c) // to read

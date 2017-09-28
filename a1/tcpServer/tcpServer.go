@@ -1,31 +1,33 @@
 package tcpServer
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"net"
 	"os"
-	"strings"
 
 	"436bin/a1/model"
+	"encoding/gob"
 )
 
 func acceptNewConn(link net.Listener) (net.Conn, error) {
 	return link.Accept()
 }
 
-func readFromConnection(c net.Conn) (string, error) {
+func readFromConnection(c net.Conn) (model.Message, error) {
 	var retries = 10
 	for i := 0; i < retries; i++ {
 		// Read in the message from the client
-		message, err := bufio.NewReader(c).ReadString('\n')
+		dec := gob.NewDecoder(c)
+		var message model.Message
+		err := dec.Decode(message)
+		// message, err := bufio.NewReader(c).ReadString('\n') //TODO: cleanup
 		if err == nil {
 			return message, nil
 		}
 	}
 	// return an error to handle reopening of connection
-	return "", errors.New("Failed to read from connection.")
+	return model.Message{Sender: "", Body: ""}, errors.New("Failed to read from connection.")
 }
 
 func start(link net.Listener) {
@@ -34,7 +36,7 @@ func start(link net.Listener) {
 		fmt.Println("Error connecting on port 8081")
 		os.Exit(2)
 	}
-	var log []model.Message
+	// var log []model.Message
 	for {
 		// will listen for message to process ending in newline (\n)
 		m, err := readFromConnection(c)
@@ -55,14 +57,17 @@ func start(link net.Listener) {
 			continue
 		}
 
-		// output message received
-		fmt.Print("Message Received:", string(m))
-		// add the message to the log
-		log = append(log, model.Message{"foo", m})
-		// sample process for string received
-		newmessage := strings.ToUpper(m)
-		// send new string back to client
-		c.Write([]byte(newmessage + "\n"))
+		fmt.Printf("%s: %s", string(m.Sender), string(m.Body))
+		// TODO log it and then send response to client.
+
+		// // output message received
+		// fmt.Print("Message Received:", string(m))
+		// // add the message to the log
+		// log = append(log, model.Message{"foo", m})
+		// // sample process for string received
+		// newmessage := strings.ToUpper(m)
+		// // send new string back to client
+		// c.Write([]byte(newmessage + "\n"))
 	}
 
 }
