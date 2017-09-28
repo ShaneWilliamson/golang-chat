@@ -14,17 +14,29 @@ import (
 // CreateReader creates a bufio.Reader
 type CreateReader func() *bufio.Reader
 
+// ReadUserName retrieves the desired username
+type ReadUserName func() (string, error)
+
 // Client contains our username, and helper methods
 type Client struct {
 	UserName     string
 	createReader CreateReader
+	readUserName ReadUserName
+}
+
+func readUserName(client *Client) (string, error) {
+	reader := client.createReader()
+	fmt.Print("Please enter your desired user name: ")
+	text, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return text, nil
 }
 
 // CreateUser reads in the username via stdin
 func (client *Client) CreateUser() (string, error) {
-	reader := client.createReader()
-	fmt.Print("Please enter your desired user name: ")
-	text, err := reader.ReadString('\n')
+	text, err := client.readUserName()
 	if err != nil {
 		return "", err
 	}
