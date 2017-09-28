@@ -1,8 +1,8 @@
 package main
 
 import (
-	"./tcpClient"
-	"./tcpServer"
+	"436bin/a1/tcpClient"
+	"436bin/a1/tcpServer"
 	"bufio"
 	"fmt"
 	"os"

@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"436bin/a1/model"
 )
 
 func acceptNewConn(link net.Listener) (net.Conn, error) {
@@ -32,9 +34,10 @@ func start(link net.Listener) {
 		fmt.Println("Error connecting on port 8081")
 		os.Exit(2)
 	}
+	var log []model.Message
 	for {
 		// will listen for message to process ending in newline (\n)
-		message, err := readFromConnection(c)
+		m, err := readFromConnection(c)
 		if err != nil {
 			// Reading from our connection has failed, accept a new one
 			if err.Error() == "Failed to read from connection." {
@@ -53,9 +56,11 @@ func start(link net.Listener) {
 		}
 
 		// output message received
-		fmt.Print("Message Received:", string(message))
+		fmt.Print("Message Received:", string(m))
+		// add the message to the log
+		log = append(log, model.Message{"foo", m})
 		// sample process for string received
-		newmessage := strings.ToUpper(message)
+		newmessage := strings.ToUpper(m)
 		// send new string back to client
 		c.Write([]byte(newmessage + "\n"))
 	}
