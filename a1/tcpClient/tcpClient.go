@@ -11,21 +11,17 @@ import (
 	"strings"
 )
 
-// CreateReader creates a bufio.Reader
-type CreateReader func() *bufio.Reader
-
 // ReadUserName retrieves the desired username
-type ReadUserName func() (string, error)
+type ReadUserName func(client *Client) (string, error)
 
 // Client contains our username, and helper methods
 type Client struct {
 	UserName     string
-	createReader CreateReader
 	readUserName ReadUserName
 }
 
 func readUserName(client *Client) (string, error) {
-	reader := client.createReader()
+	reader := createBufioReader()
 	fmt.Print("Please enter your desired user name: ")
 	text, err := reader.ReadString('\n')
 	if err != nil {
@@ -34,14 +30,15 @@ func readUserName(client *Client) (string, error) {
 	return text, nil
 }
 
-// CreateUser reads in the username via stdin
-func (client *Client) CreateUser() (string, error) {
-	text, err := client.readUserName()
+// CreateUser constructs the user with an associated UserName
+func (client *Client) CreateUser() error {
+	text, err := client.readUserName(client)
 	if err != nil {
-		return "", err
+		return err
 	}
 	text = strings.TrimSpace(text)
-	return text, nil
+	client.UserName = text
+	return nil
 }
 
 // CreateReader this is split out for testing purposes
@@ -55,14 +52,12 @@ func constructMessage(userName string, body string) model.Message {
 
 // Create makes a new tcp client and waits to send a message to the target server.
 func Create() {
-	var userName string
-	var err error
 	// Create the client
-	client := &Client{createReader: createBufioReader}
+	client := &Client{readUserName: readUserName}
 
 	// Before dialing, we set up the username
 	for {
-		userName, err = client.CreateUser()
+		err := client.CreateUser()
 		if err != nil {
 			fmt.Println("Failed to create user, please try again.")
 			continue
@@ -85,7 +80,7 @@ func Create() {
 			os.Exit(1)
 		}
 		// Format the message for serialization
-		m := constructMessage(userName, text)
+		m := constructMessage(client.UserName, text)
 		// Use gob lib to encode the data
 		enc := gob.NewEncoder(c) // to write
 		dec := gob.NewDecoder(c) // to read
