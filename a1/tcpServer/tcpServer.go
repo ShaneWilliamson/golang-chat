@@ -3,6 +3,7 @@ package tcpServer
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 
@@ -10,8 +11,27 @@ import (
 	"encoding/gob"
 )
 
-func acceptNewConn(link net.Listener) (net.Conn, error) {
-	return link.Accept()
+var log []*model.Message
+
+func sendLogToConn(c *net.Conn) {
+	enc := gob.NewEncoder(*c) // to write
+	err := enc.Encode(log)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+}
+
+func acceptNewConn(link net.Listener) net.Conn {
+	c, err := link.Accept()
+	if err != nil {
+		// Creation of new connection failed
+		fmt.Println("Failed to accept a new connection. Exiting.")
+		os.Exit(3)
+	}
+	// Send log to new connection
+	sendLogToConn(&c)
+
+	return c
 }
 
 func readFromConnection(c net.Conn) (*model.Message, error) {
@@ -21,58 +41,55 @@ func readFromConnection(c net.Conn) (*model.Message, error) {
 		dec := gob.NewDecoder(c)
 		message := &model.Message{}
 		err := dec.Decode(message)
-		if err != nil {
-			fmt.Println(err.Error())
+		if err == io.EOF {
+			return nil, errors.New("Connection closed")
 		}
-		// message, err := bufio.NewReader(c).ReadString('\n') //TODO: cleanup
+		if err != nil {
+			// We should still reply with an error message
+			fmt.Println(err.Error())
+			enc := gob.NewEncoder(c)
+			// Todo: this won't cut it, needs to be a pointer to some object. Add err field to message
+			enc.Encode("ERROR: Please try again in a few moments")
+		}
+
 		if err == nil {
 			return message, nil
 		}
 	}
 	// return an error to handle reopening of connection
-	return &model.Message{Sender: "", Body: ""}, errors.New("Failed to read from connection.")
+	return &model.Message{}, errors.New("Failed to read from connection")
+}
+
+func logMessage(m *model.Message) {
+	fmt.Printf("%s: %s\n", string(m.Sender), string(m.Body))
+	log = append(log, m)
+}
+
+func respondToClient(c *net.Conn, m *model.Message) {
+	enc := gob.NewEncoder(*c) // to write
+	enc.Encode(m)
 }
 
 func start(link net.Listener) {
-	c, err := acceptNewConn(link)
-	if err != nil {
-		fmt.Println("Error connecting on port 8081")
-		os.Exit(2)
-	}
-	// var log []model.Message
+	fmt.Println("Starting server...")
+	c := acceptNewConn(link)
 	for {
 		// will listen for message to process ending in newline (\n)
 		m, err := readFromConnection(c)
 		if err != nil {
 			// Reading from our connection has failed, accept a new one
-			if err.Error() == "Failed to read from connection." {
+			if err.Error() == "Connection closed" {
 				// This is an acceptable error case, here's where we accept a new connection
 				// we will accept a new connection if we've failed with retries once, otherwise exit for now
 				fmt.Println("Connection to client has been closed. Listening for new connection.")
-				c, err = acceptNewConn(link)
-				if err != nil {
-					// Creation of new connection failed
-					fmt.Println("Failed to accept a new connection. Exiting.")
-					os.Exit(3)
-				}
+				c = acceptNewConn(link)
 			}
 			// we've created a new connection, now continue loop to attempt reading from a client
 			continue
 		}
-
-		fmt.Printf("%s: %s", string(m.Sender), string(m.Body))
-		// TODO log it and then send response to client.
-
-		// // output message received
-		// fmt.Print("Message Received:", string(m))
-		// // add the message to the log
-		// log = append(log, model.Message{"foo", m})
-		// // sample process for string received
-		// newmessage := strings.ToUpper(m)
-		// // send new string back to client
-		// c.Write([]byte(newmessage + "\n"))
+		logMessage(m)
+		respondToClient(&c, m)
 	}
-
 }
 
 // Create makes a new tcp server and listens for incoming requests

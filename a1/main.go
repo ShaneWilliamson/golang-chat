@@ -30,10 +30,8 @@ func main() {
 	}
 	switch text {
 	case "1":
-		fmt.Println("Starting server...")
 		tcpServer.Create()
 	case "2":
-		fmt.Println("Starting client...")
 		tcpClient.Create()
 	default:
 		fmt.Println("Invalid choice, unable to recover. Exiting.")

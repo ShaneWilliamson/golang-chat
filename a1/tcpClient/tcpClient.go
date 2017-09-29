@@ -18,6 +18,7 @@ type ReadUserName func(client *Client) (string, error)
 type Client struct {
 	UserName     string
 	readUserName ReadUserName
+	Conn         *net.Conn
 }
 
 func readUserName(client *Client) (string, error) {
@@ -46,12 +47,48 @@ func createBufioReader() *bufio.Reader {
 	return bufio.NewReader(os.Stdin)
 }
 
-func constructMessage(userName string, body string) model.Message {
-	return model.Message{Sender: userName, Body: strings.TrimSpace(body)}
+func constructMessage(userName string, body string) *model.Message {
+	return &model.Message{Sender: userName, Body: strings.TrimSpace(body)}
+}
+
+func printMessage(m *model.Message) {
+	fmt.Printf("%s: %s\n", m.Sender, m.Body)
+}
+
+func sendMessage(client *Client, text string) {
+	// Format the message for serialization
+	m := constructMessage(client.UserName, text)
+	fmt.Printf("Message to send: %s\n", m) // todo: remove this
+	// Use gob lib to encode the data
+	enc := gob.NewEncoder(*client.Conn) // to write
+	enc.Encode(&m)
+}
+
+func receiveMessage(client *Client) {
+	message := &model.Message{}
+	dec := gob.NewDecoder(*client.Conn)
+	err := dec.Decode(message)
+	if err != nil {
+		fmt.Println("Decoding response from server failed.")
+		return
+	}
+
+	printMessage(message)
+}
+
+func readMessageFromUser(client *Client) (string, error) {
+	fmt.Printf("%s: ", client.UserName)
+	reader := bufio.NewReader(os.Stdin)
+	text, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return text, nil
 }
 
 // Create makes a new tcp client and waits to send a message to the target server.
 func Create() {
+	fmt.Println("Creating client...")
 	// Create the client
 	client := &Client{readUserName: readUserName}
 
@@ -71,44 +108,31 @@ func Create() {
 		fmt.Println("Client dialing failed. Exiting.")
 		os.Exit(1)
 	}
+	client.Conn = &c
+
+	// Receive the log, and print it
+	dec := gob.NewDecoder(c) // to read
+	var log []*model.Message
+	err = nil
+	err = dec.Decode(&log)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(2)
+	}
+
+	for _, logMessage := range log {
+		printMessage(logMessage)
+	}
+
 	for {
-		fmt.Print("sending message: ")
-		reader := bufio.NewReader(os.Stdin)
-		text, err := reader.ReadString('\n')
+		text, err := readMessageFromUser(client)
 		if err != nil {
-			fmt.Print("Error while reading in message. Exiting.")
-			os.Exit(1)
-		}
-		// Format the message for serialization
-		m := constructMessage(client.UserName, text)
-		// Use gob lib to encode the data
-		enc := gob.NewEncoder(c) // to write
-		dec := gob.NewDecoder(c) // to read
-		enc.Encode(m)
-		// serializedMessage := model.SerializeMessage(m)
-		if err != nil {
-			fmt.Println("Message failed to serialize, please try again.")
+			fmt.Println("Failed to accept message input. Please try again.")
 			continue
 		}
 
-		var message model.Message
-		err = dec.Decode(message)
-		if err != nil {
-			fmt.Println("Decoding response from server failed.")
-			continue
-		}
+		sendMessage(client, text)
 
-		// ** OLD METHOD **
-		// Send the serialized message to the server
-		// fmt.Fprintf(c, serializedMessage+"\n")
-		// message, err := bufio.NewReader(c).ReadString('\n')
-		// if err != nil {
-		// 	fmt.Print("Failed to read response from server. Exiting.")
-		// 	os.Exit(2)
-		// }
-		// **
-
-		fmt.Println("Response from server:")
-		fmt.Printf("Message: {%s, %s}\n", message.Sender, message.Body)
+		receiveMessage(client)
 	}
 }

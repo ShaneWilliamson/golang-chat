@@ -37,6 +37,14 @@ func TestCreateUser(t *testing.T) {
 	}
 }
 
+func TestReceiveErrorMessage(t *testing.T) {
+
+}
+
+func TestReceiveMessage(t *testing.T) {
+	// todo
+}
+
 func TestConstructMessage(t *testing.T) {
 	message := constructMessage("Foo", "Bar")
 	if message.Body != "Bar" || message.Sender != "Foo" {
