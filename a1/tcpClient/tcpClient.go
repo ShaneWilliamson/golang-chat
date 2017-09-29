@@ -72,8 +72,8 @@ func Create() {
 		os.Exit(1)
 	}
 	for {
-		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("sending message: ")
+		reader := bufio.NewReader(os.Stdin)
 		text, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Print("Error while reading in message. Exiting.")

@@ -14,20 +14,23 @@ func acceptNewConn(link net.Listener) (net.Conn, error) {
 	return link.Accept()
 }
 
-func readFromConnection(c net.Conn) (model.Message, error) {
+func readFromConnection(c net.Conn) (*model.Message, error) {
 	var retries = 10
 	for i := 0; i < retries; i++ {
 		// Read in the message from the client
 		dec := gob.NewDecoder(c)
-		var message model.Message
+		message := &model.Message{}
 		err := dec.Decode(message)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
 		// message, err := bufio.NewReader(c).ReadString('\n') //TODO: cleanup
 		if err == nil {
 			return message, nil
 		}
 	}
 	// return an error to handle reopening of connection
-	return model.Message{Sender: "", Body: ""}, errors.New("Failed to read from connection.")
+	return &model.Message{Sender: "", Body: ""}, errors.New("Failed to read from connection.")
 }
 
 func start(link net.Listener) {
