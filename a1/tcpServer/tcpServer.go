@@ -22,6 +22,7 @@ func sendLogToConn(c *net.Conn) {
 }
 
 func acceptNewConn(link net.Listener) net.Conn {
+    // Wait for the next call, and returns a generic connection
 	c, err := link.Accept()
 	if err != nil {
 		// Creation of new connection failed
@@ -42,6 +43,7 @@ func readFromConnection(c net.Conn) (*model.Message, error) {
 		message := &model.Message{}
 		err := dec.Decode(message)
 		if err == io.EOF {
+            // todo remove the user from the users list from the current chat room
 			return nil, errors.New("Connection closed")
 		}
 		if err != nil {
