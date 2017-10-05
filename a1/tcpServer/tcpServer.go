@@ -14,8 +14,6 @@ import (
 
 var log []*model.Message // This will be removed when we implement rooms
 
-const threadCount int = 10
-
 func sendLogToConn(c *net.Conn) {
 	// TODO convert and serialize for http request
 	enc := gob.NewEncoder(*c) // to write
@@ -49,6 +47,7 @@ func receiveMessage(writer http.ResponseWriter, req *http.Request) {
 	var message *model.Message
 	json.Unmarshal(bodyBytes, &message)
 	logMessage(message)
+	broadcastMessage(message)
 }
 
 func getLog(writer http.ResponseWriter, req *http.Request) {
@@ -64,6 +63,14 @@ func getLog(writer http.ResponseWriter, req *http.Request) {
 func logMessage(m *model.Message) {
 	fmt.Printf("%s: %s\n", string(m.Sender), string(m.Body))
 	log = append(log, m)
+}
+
+func broadcastMessage(message *model.Message) {
+	client := &http.Client{}
+	// TODO broadcast to all users in the target room
+	// Format the message for serialization
+	messageBuffer := model.ConvertMessageToBuffer(message)
+	client.Post("http://localhost:9081/message", "application/json; charset=utf-8", messageBuffer)
 }
 
 func respondToClient(c *net.Conn, m *model.Message) {

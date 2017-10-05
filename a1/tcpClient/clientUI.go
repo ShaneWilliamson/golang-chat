@@ -2,16 +2,22 @@ package tcpClient
 
 import (
 	"436bin/a1/model"
+	"fmt"
 
 	"github.com/andlabs/ui"
 )
 
 var window ui.Window
+var logView *ui.Label
 
-func addMessageToLogView(log *ui.Label, message *model.Message) {
+func addMessageToLogView(message *model.Message) {
+	if logView == nil {
+		fmt.Println("Log view not created yet, will not add new message to log")
+		return
+	}
 	newEntry := message.ReadableFormat()
 	ui.QueueMain(func() {
-		log.SetText(log.Text() + newEntry)
+		logView.SetText(logView.Text() + newEntry)
 	})
 }
 
@@ -25,7 +31,7 @@ func CreateChatWindow(client *Client) {
 	err := ui.Main(func() {
 		entry := ui.NewEntry()
 		button := ui.NewButton("Ok")
-		logView := ui.NewLabel("")
+		logView = ui.NewLabel("")
 		box := ui.NewVerticalBox()
 		label := ui.NewLabel("Enter your name:")
 
@@ -48,14 +54,14 @@ func CreateChatWindow(client *Client) {
 			label.SetText("Enter a message:")
 
 			// Retrieve log
-			log, err := getServerLog(client)
+			serverLog, err := getServerLog(client)
 			if err != nil {
 				logView.SetText("Unable to retrieve server log.")
 			}
 
 			// Spin off the goroutine to update the log accordingly
-			for _, message := range log {
-				addMessageToLogView(logView, message)
+			for _, message := range serverLog {
+				addMessageToLogView(message)
 			}
 
 			// Now we make this button send messages
@@ -70,9 +76,6 @@ func CreateChatWindow(client *Client) {
 			ui.Quit()
 			return true
 		})
-
-		// Spin up goroutine to handle populating the log view with new messages broadcasted from the server
-		// TODO ...
 
 		window.Show()
 	})
