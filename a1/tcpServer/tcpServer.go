@@ -73,11 +73,6 @@ func broadcastMessage(message *model.Message) {
 	client.Post("http://localhost:9081/message", "application/json; charset=utf-8", messageBuffer)
 }
 
-func respondToClient(c *net.Conn, m *model.Message) {
-	enc := gob.NewEncoder(*c) // to write
-	enc.Encode(m)
-}
-
 func start() {
 	fmt.Println("Starting server...")
 	// Create the HTTP server
