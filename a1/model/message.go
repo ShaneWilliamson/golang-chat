@@ -6,10 +6,7 @@ type Message struct {
 	Body   string
 }
 
-// // SerializeMessage attempts to convert a message object to a serializable format
-// func SerializeMessage(m Message) string {
-// 	// I'm thinking JSON style. There's probably some standard somewhere... todo?
-// 	text := "{username: " + m.Sender + ", body: " + m.Body + "}\n"
-// 	fmt.Println(text)
-// 	return text
-// }
+// ReadableFormat returns a human-friendly representation of the message
+func (message *Message) ReadableFormat() string {
+	return message.Sender + ": " + message.Body + "\n"
+}

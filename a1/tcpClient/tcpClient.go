@@ -11,17 +11,13 @@ import (
 	"strings"
 )
 
-// ReadUserName retrieves the desired username
-type ReadUserName func(client *Client) (string, error)
-
 // Client contains our username, and helper methods
 type Client struct {
-	UserName     string
-	readUserName ReadUserName
-	Conn         *net.Conn
+	UserName string
+	Conn     *net.Conn
 }
 
-func readUserName(client *Client) (string, error) {
+func (client *Client) readUserName() (string, error) {
 	reader := createBufioReader()
 	fmt.Print("Please enter your desired user name: ")
 	text, err := reader.ReadString('\n')
@@ -33,7 +29,7 @@ func readUserName(client *Client) (string, error) {
 
 // CreateUser constructs the user with an associated UserName
 func (client *Client) CreateUser() error {
-	text, err := client.readUserName(client)
+	text, err := client.readUserName()
 	if err != nil {
 		return err
 	}
@@ -55,7 +51,7 @@ func printMessage(m *model.Message) {
 	fmt.Printf("%s: %s\n", m.Sender, m.Body)
 }
 
-func sendMessage(client *Client, text string) {
+func (client *Client) sendMessage(text string) {
 	// Format the message for serialization
 	m := constructMessage(client.UserName, text)
 	fmt.Printf("Message to send: %s\n", m) // todo: remove this
@@ -64,16 +60,16 @@ func sendMessage(client *Client, text string) {
 	enc.Encode(&m)
 }
 
-func receiveMessage(client *Client) {
+func (client *Client) receiveMessage() (*model.Message, error) {
 	message := &model.Message{}
 	dec := gob.NewDecoder(*client.Conn)
 	err := dec.Decode(message)
 	if err != nil {
 		fmt.Println("Decoding response from server failed.")
-		return
+		return nil, err
 	}
 
-	printMessage(message)
+	return message, nil
 }
 
 func readMessageFromUser(client *Client) (string, error) {
@@ -86,22 +82,24 @@ func readMessageFromUser(client *Client) (string, error) {
 	return text, nil
 }
 
+func getServerLog(c *Client) ([]*model.Message, error) {
+	// Receive the log, and print it
+	dec := gob.NewDecoder(*c.Conn) // to read
+	var log []*model.Message
+	err := dec.Decode(&log)
+	if err != nil {
+		return nil, err
+	}
+	return log, nil
+}
+
 // Create makes a new tcp client and waits to send a message to the target server.
 func Create() {
 	fmt.Println("Creating client...")
 	// Create the client
-	client := &Client{readUserName: readUserName}
+	client := &Client{}
 
-	// Before dialing, we set up the username
-	for {
-		err := client.CreateUser()
-		if err != nil {
-			fmt.Println("Failed to create user, please try again.")
-			continue
-		}
-		break
-	}
-
+	// We need to create the connection first
 	c, err := net.Dial("tcp", "127.0.0.1:8081")
 	if err != nil {
 		fmt.Println(err.Error())
@@ -110,29 +108,6 @@ func Create() {
 	}
 	client.Conn = &c
 
-	// Receive the log, and print it
-	dec := gob.NewDecoder(c) // to read
-	var log []*model.Message
-	err = nil
-	err = dec.Decode(&log)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(2)
-	}
-
-	for _, logMessage := range log {
-		printMessage(logMessage)
-	}
-
-	for {
-		text, err := readMessageFromUser(client)
-		if err != nil {
-			fmt.Println("Failed to accept message input. Please try again.")
-			continue
-		}
-
-		sendMessage(client, text)
-
-		receiveMessage(client)
-	}
+	// And now we create the GUI
+	CreateChatWindow(client)
 }
