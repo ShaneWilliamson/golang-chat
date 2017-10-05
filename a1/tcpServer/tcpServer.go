@@ -1,19 +1,22 @@
 package tcpServer
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"net"
+	"net/http"
 	"os"
 
 	"436bin/a1/model"
 	"encoding/gob"
+	"encoding/json"
 )
 
-var log []*model.Message
+var log []*model.Message // This will be removed when we implement rooms
+
+const threadCount int = 10
 
 func sendLogToConn(c *net.Conn) {
+	// TODO convert and serialize for http request
 	enc := gob.NewEncoder(*c) // to write
 	err := enc.Encode(log)
 	if err != nil {
@@ -21,8 +24,9 @@ func sendLogToConn(c *net.Conn) {
 	}
 }
 
+// TODO delete this after transition to http requests
 func acceptNewConn(link net.Listener) net.Conn {
-    // Wait for the next call, and returns a generic connection
+	// Wait for the next call, and returns a generic connection
 	c, err := link.Accept()
 	if err != nil {
 		// Creation of new connection failed
@@ -35,31 +39,21 @@ func acceptNewConn(link net.Listener) net.Conn {
 	return c
 }
 
-func readFromConnection(c net.Conn) (*model.Message, error) {
-	var retries = 10
-	for i := 0; i < retries; i++ {
-		// Read in the message from the client
-		dec := gob.NewDecoder(c)
-		message := &model.Message{}
-		err := dec.Decode(message)
-		if err == io.EOF {
-            // todo remove the user from the users list from the current chat room
-			return nil, errors.New("Connection closed")
-		}
-		if err != nil {
-			// We should still reply with an error message
-			fmt.Println(err.Error())
-			enc := gob.NewEncoder(c)
-			// Todo: this won't cut it, needs to be a pointer to some object. Add err field to message
-			enc.Encode("ERROR: Please try again in a few moments")
-		}
+func receiveMessage(writer http.ResponseWriter, req *http.Request) {
+	// For now let's just have a look at it
+	fmt.Println(req.Body)
 
-		if err == nil {
-			return message, nil
-		}
+	// logMessage(m)
+}
+
+func getLog(writer http.ResponseWriter, req *http.Request) {
+	serializedLog, err := json.Marshal(&log)
+	if err != nil {
+		fmt.Println("Marshalling the log has failed.")
+		writer.WriteHeader(http.StatusInternalServerError)
 	}
-	// return an error to handle reopening of connection
-	return &model.Message{}, errors.New("Failed to read from connection")
+	fmt.Println(string(serializedLog))
+	writer.Write(serializedLog)
 }
 
 func logMessage(m *model.Message) {
@@ -72,36 +66,27 @@ func respondToClient(c *net.Conn, m *model.Message) {
 	enc.Encode(m)
 }
 
-func start(link net.Listener) {
+func start() {
 	fmt.Println("Starting server...")
-	c := acceptNewConn(link)
-	for {
-		// will listen for message to process ending in newline (\n)
-		m, err := readFromConnection(c)
-		if err != nil {
-			// Reading from our connection has failed, accept a new one
-			if err.Error() == "Connection closed" {
-				// This is an acceptable error case, here's where we accept a new connection
-				// we will accept a new connection if we've failed with retries once, otherwise exit for now
-				fmt.Println("Connection to client has been closed. Listening for new connection.")
-				c = acceptNewConn(link)
-			}
-			// we've created a new connection, now continue loop to attempt reading from a client
-			continue
-		}
-		logMessage(m)
-		respondToClient(&c, m)
-	}
+	// Create the HTTP server
+	fmt.Println((http.ListenAndServe(":8081", nil).Error()))
 }
 
 // Create makes a new tcp server and listens for incoming requests
 func Create() {
 	// create the server
 	fmt.Println("Creating Server...")
-	link, err := net.Listen("tcp", ":8081")
-	if err != nil {
-		fmt.Println("Error attempting to listen on port 8081. Exiting.")
-		os.Exit(1)
-	}
-	start(link)
+
+	// TODO Remove
+	log = append(log, &model.Message{Sender: "Foo", Body: "bar"})
+	log = append(log, &model.Message{Sender: "Foo", Body: "baz"})
+
+	// Register our HTTP routes
+	http.HandleFunc("/message", receiveMessage)
+	http.HandleFunc("/log", getLog)
+	// http.HandleFunc("/chatrooms/list", todo)
+	// http.HandleFunc("/chatrooms/join", todo)
+	// http.HandleFunc("/chatrooms/leave", todo)
+
+	start()
 }

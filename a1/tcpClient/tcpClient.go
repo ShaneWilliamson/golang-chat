@@ -3,6 +3,7 @@ package tcpClient
 import (
 	"436bin/a1/model"
 	"encoding/gob"
+	"net/http"
 
 	"bufio"
 	"fmt"
@@ -13,8 +14,9 @@ import (
 
 // Client contains our username, and helper methods
 type Client struct {
-	UserName string
-	Conn     *net.Conn
+	UserName   string // TODO Change to be a User
+	HTTPClient *http.Client
+	Conn       *net.Conn
 }
 
 func (client *Client) readUserName() (string, error) {
@@ -97,7 +99,9 @@ func getServerLog(c *Client) ([]*model.Message, error) {
 func Create() {
 	fmt.Println("Creating client...")
 	// Create the client
-	client := &Client{}
+	client := &Client{
+		HTTPClient: &http.Client{},
+	}
 
 	// We need to create the connection first
 	c, err := net.Dial("tcp", "127.0.0.1:8081")

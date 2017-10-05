@@ -3,6 +3,7 @@ package tcpClient
 import (
 	"436bin/a1/model"
 	"fmt"
+	"io/ioutil"
 
 	"github.com/andlabs/ui"
 )
@@ -43,19 +44,15 @@ func CreateChatWindow(client *Client) {
 			label.SetText("Enter a message:")
 
 			// Retrieve log
-			log, err := getServerLog(client)
+			// Let's start here
+			res, err := client.HTTPClient.Get("http://localhost:8081/log") // this is just a temp handler so we can sanity test
+			// Wait for the response to complete
+			defer res.Body.Close()
 			if err != nil {
-				fmt.Println("Panic?")
-				panic(err) // todo, clean up
+				fmt.Println(err.Error())
 			}
-			// split this out?
-			logText := ""
-			for _, logMessage := range log {
-				logText += logMessage.ReadableFormat()
-			}
-
-			// Send the message to the server here
-			logView.SetText(logText)
+			bodyBytes, _ := ioutil.ReadAll(res.Body)
+			fmt.Println(string(bodyBytes))
 
 			// Spin off the goroutine to update the log accordingly
 			go func() {
