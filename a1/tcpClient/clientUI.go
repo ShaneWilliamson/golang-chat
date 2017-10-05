@@ -2,19 +2,22 @@ package tcpClient
 
 import (
 	"436bin/a1/model"
-	"fmt"
-	"io/ioutil"
 
 	"github.com/andlabs/ui"
 )
 
 var window ui.Window
 
-func addMessageToLog(log *ui.Label, message *model.Message) {
+func addMessageToLogView(log *ui.Label, message *model.Message) {
 	newEntry := message.ReadableFormat()
 	ui.QueueMain(func() {
 		log.SetText(log.Text() + newEntry)
 	})
+}
+
+func assignUserName(client *Client, username string) {
+	// We assign the username to the client
+	client.UserName = username
 }
 
 // CreateChatWindow creates a window which contains the log and the ability to send messages
@@ -37,33 +40,23 @@ func CreateChatWindow(client *Client) {
 		// Maybe we make a new box here for the log and append the text as it comes in
 
 		button.OnClicked(func(*ui.Button) {
-			// We assign the username to the client
-			client.UserName = entry.Text()
+			assignUserName(client, entry.Text())
+			// Reset the text
+			entry.SetText("")
 
 			// Username has been entered, now let's change this to send messages
 			label.SetText("Enter a message:")
 
 			// Retrieve log
-			// Let's start here
-			res, err := client.HTTPClient.Get("http://localhost:8081/log") // this is just a temp handler so we can sanity test
-			// Wait for the response to complete
-			defer res.Body.Close()
+			log, err := getServerLog(client)
 			if err != nil {
-				fmt.Println(err.Error())
+				logView.SetText("Unable to retrieve server log.")
 			}
-			bodyBytes, _ := ioutil.ReadAll(res.Body)
-			fmt.Println(string(bodyBytes))
 
 			// Spin off the goroutine to update the log accordingly
-			go func() {
-				for {
-					message, err := client.receiveMessage()
-					if err != nil {
-						continue
-					}
-					addMessageToLog(logView, message)
-				}
-			}()
+			for _, message := range log {
+				addMessageToLogView(logView, message)
+			}
 
 			// Now we make this button send messages
 			button.OnClicked(func(*ui.Button) {
@@ -77,6 +70,10 @@ func CreateChatWindow(client *Client) {
 			ui.Quit()
 			return true
 		})
+
+		// Spin up goroutine to handle populating the log view with new messages broadcasted from the server
+		// TODO ...
+
 		window.Show()
 	})
 	if err != nil {

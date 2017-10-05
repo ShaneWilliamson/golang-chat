@@ -2,6 +2,7 @@ package tcpServer
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -40,10 +41,14 @@ func acceptNewConn(link net.Listener) net.Conn {
 }
 
 func receiveMessage(writer http.ResponseWriter, req *http.Request) {
-	// For now let's just have a look at it
-	fmt.Println(req.Body)
-
-	// logMessage(m)
+	bodyBytes, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		fmt.Println("Error reading the message from the request body")
+		writer.WriteHeader(http.StatusInternalServerError)
+	}
+	var message *model.Message
+	json.Unmarshal(bodyBytes, &message)
+	logMessage(message)
 }
 
 func getLog(writer http.ResponseWriter, req *http.Request) {
@@ -76,10 +81,6 @@ func start() {
 func Create() {
 	// create the server
 	fmt.Println("Creating Server...")
-
-	// TODO Remove
-	log = append(log, &model.Message{Sender: "Foo", Body: "bar"})
-	log = append(log, &model.Message{Sender: "Foo", Body: "baz"})
 
 	// Register our HTTP routes
 	http.HandleFunc("/message", receiveMessage)
