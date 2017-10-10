@@ -48,12 +48,12 @@ func createBufioReader() *bufio.Reader {
 
 func constructMessage(userName string, body string) *model.Message {
 	// Marshal the message, and prepare it for transit
-	message := &model.Message{Sender: userName, Body: strings.TrimSpace(body)}
+	message := &model.Message{UserName: userName, Body: strings.TrimSpace(body)}
 	return message
 }
 
 func printMessage(m *model.Message) {
-	fmt.Printf("%s: %s\n", m.Sender, m.Body)
+	fmt.Printf("%s: %s\n", m.UserName, m.Body)
 }
 
 func (client *Client) sendMessage(text string) {

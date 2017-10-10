@@ -61,7 +61,7 @@ func getLog(writer http.ResponseWriter, req *http.Request) {
 }
 
 func logMessage(m *model.Message) {
-	fmt.Printf("%s: %s\n", string(m.Sender), string(m.Body))
+	fmt.Printf("%s: %s\n", string(m.UserName), string(m.Body))
 	log = append(log, m)
 }
 
