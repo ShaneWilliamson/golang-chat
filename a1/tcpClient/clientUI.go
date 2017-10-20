@@ -2,25 +2,27 @@ package tcpClient
 
 import (
 	"436bin/a1/model"
+	"fmt"
 
 	"os"
 
 	"github.com/therecipe/qt/widgets"
 )
 
-// var window ui.Window
-// var logView *ui.Label
+var log string
+var logView *widgets.QTextEdit
+var logScrollBar *widgets.QScrollBar
 var tabWidget *widgets.QTabWidget
 
 func addMessageToLogView(message *model.Message) {
-	// if logView == nil {
-	// 	fmt.Println("Log view not created yet, will not add new message to log")
-	// 	return
-	// }
-	// newEntry := message.ReadableFormat()
-	// ui.QueueMain(func() {
-	// 	logView.SetText(logView.Text() + newEntry)
-	// })
+	if logView == nil {
+		fmt.Println("Log view not created yet, will not add new message to log")
+		return
+	}
+	newEntry := message.ReadableFormat()
+	log += newEntry
+	logView.SetText(log)
+	logScrollBar.SetValue(logScrollBar.Maximum())
 }
 
 func assignUserName(client *Client, username string) {
@@ -28,7 +30,7 @@ func assignUserName(client *Client, username string) {
 	client.UserName = username
 }
 
-func createChatTab() {
+func createChatTab(client *Client) {
 	tab := widgets.NewQWidget(nil, 0)
 	layout := widgets.NewQVBoxLayout()
 	logLayout := widgets.NewQVBoxLayout()
@@ -38,15 +40,36 @@ func createChatTab() {
 	layout.InsertLayout(1, inputLayout, 0)
 	tab.SetLayout(layout)
 
-	chatArea := widgets.NewQTextEdit2("", nil)
-	chatArea.SetReadOnly(true)
-	logLayout.AddWidget(chatArea, 0, 0)
+	logView = widgets.NewQTextEdit2("", nil)
+	logView.SetReadOnly(true)
+	logScrollBar = widgets.NewQScrollBar(nil)
+	logView.SetVerticalScrollBar(logScrollBar)
+	logLayout.AddWidget(logView, 0, 0)
 
 	messageInput := widgets.NewQLineEdit(nil)
 	messageInput.SetPlaceholderText("Enter message")
 	submitButton := widgets.NewQPushButton2("Send", nil)
+	fmt.Println(submitButton.AutoDefault())
+	submitButton.SetAutoDefault(true)
+	submitButton.ConnectClicked(func(checked bool) {
+		client.sendMessage(messageInput.Text())
+		// Reset the text
+		messageInput.SetText("")
+	})
 	inputLayout.InsertWidget(0, messageInput, 0, 0)
 	inputLayout.InsertWidget(1, submitButton, 0, 0)
+
+	serverLog, err := getServerLog(client)
+	if err != nil {
+		logView.SetText("Unable to retrieve server log.")
+	}
+	// Set up the chat log
+	log = ""
+	for _, message := range serverLog {
+		addMessageToLogView(message)
+	}
+
+	messageInput.ConnectReturnPressed(submitButton.Click)
 
 	tabWidget.AddTab(tab, "chat")
 }
@@ -86,7 +109,7 @@ func CreateChatWindow(client *Client) {
 	usernameButton.ConnectClicked(func(checked bool) {
 		assignUserName(client, usernameInput.Text())
 		tabWidget.RemoveTab(0)
-		createChatTab()
+		createChatTab(client)
 	})
 
 	tabWidget.AddTab(mainWidget, "Config")
@@ -126,10 +149,10 @@ func CreateChatWindow(client *Client) {
 	// 		label.SetText("Enter a message:")
 
 	// 		// Retrieve log
-	// 		serverLog, err := getServerLog(client)
-	// 		if err != nil {
-	// 			logView.SetText("Unable to retrieve server log.")
-	// 		}
+	// serverLog, err := getServerLog(client)
+	// if err != nil {
+	// 	logView.SetText("Unable to retrieve server log.")
+	// }
 
 	// 		// Spin off the goroutine to update the log accordingly
 	// 		for _, message := range serverLog {
@@ -139,9 +162,9 @@ func CreateChatWindow(client *Client) {
 	// 		// Now we make this button send messages
 	// 		button.OnClicked(func(*ui.Button) {
 	// 			// Send the message to the server
-	// 			client.sendMessage(entry.Text())
-	// 			// Reset the text
-	// 			entry.SetText("")
+	// client.sendMessage(entry.Text())
+	// // Reset the text
+	// entry.SetText("")
 	// 		})
 	// 	})
 	// 	window.OnClosing(func(*ui.Window) bool {
