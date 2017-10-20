@@ -22,12 +22,16 @@ func addMessageToLogView(message *model.Message) {
 	newEntry := message.ReadableFormat()
 	log += newEntry
 	logView.SetText(log)
-	logScrollBar.SetValue(logScrollBar.Maximum())
+	scrollChatToBottom()
 }
 
 func assignUserName(client *Client, username string) {
 	// We assign the username to the client
 	client.UserName = username
+}
+
+func scrollChatToBottom() {
+	logScrollBar.SetValue(logScrollBar.MaximumHeight())
 }
 
 func createChatTab(client *Client) {
@@ -52,6 +56,9 @@ func createChatTab(client *Client) {
 	fmt.Println(submitButton.AutoDefault())
 	submitButton.SetAutoDefault(true)
 	submitButton.ConnectClicked(func(checked bool) {
+		if messageInput.Text() == "" {
+			return
+		}
 		client.sendMessage(messageInput.Text())
 		// Reset the text
 		messageInput.SetText("")
@@ -72,6 +79,8 @@ func createChatTab(client *Client) {
 	messageInput.ConnectReturnPressed(submitButton.Click)
 
 	tabWidget.AddTab(tab, "chat")
+
+	scrollChatToBottom()
 }
 
 // CreateChatWindow creates a window which contains the log and the ability to send messages
