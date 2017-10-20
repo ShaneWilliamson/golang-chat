@@ -2,23 +2,25 @@ package tcpClient
 
 import (
 	"436bin/a1/model"
-	"fmt"
 
-	"github.com/andlabs/ui"
+	"os"
+
+	"github.com/therecipe/qt/widgets"
 )
 
-var window ui.Window
-var logView *ui.Label
+// var window ui.Window
+// var logView *ui.Label
+var tabWidget *widgets.QTabWidget
 
 func addMessageToLogView(message *model.Message) {
-	if logView == nil {
-		fmt.Println("Log view not created yet, will not add new message to log")
-		return
-	}
-	newEntry := message.ReadableFormat()
-	ui.QueueMain(func() {
-		logView.SetText(logView.Text() + newEntry)
-	})
+	// if logView == nil {
+	// 	fmt.Println("Log view not created yet, will not add new message to log")
+	// 	return
+	// }
+	// newEntry := message.ReadableFormat()
+	// ui.QueueMain(func() {
+	// 	logView.SetText(logView.Text() + newEntry)
+	// })
 }
 
 func assignUserName(client *Client, username string) {
@@ -26,60 +28,130 @@ func assignUserName(client *Client, username string) {
 	client.UserName = username
 }
 
+func createChatTab() {
+	tab := widgets.NewQWidget(nil, 0)
+	layout := widgets.NewQVBoxLayout()
+	logLayout := widgets.NewQVBoxLayout()
+	inputLayout := widgets.NewQHBoxLayout()
+
+	layout.InsertLayout(0, logLayout, 0)
+	layout.InsertLayout(1, inputLayout, 0)
+	tab.SetLayout(layout)
+
+	chatArea := widgets.NewQTextEdit2("", nil)
+	chatArea.SetReadOnly(true)
+	logLayout.AddWidget(chatArea, 0, 0)
+
+	messageInput := widgets.NewQLineEdit(nil)
+	messageInput.SetPlaceholderText("Enter message")
+	submitButton := widgets.NewQPushButton2("Send", nil)
+	inputLayout.InsertWidget(0, messageInput, 0, 0)
+	inputLayout.InsertWidget(1, submitButton, 0, 0)
+
+	tabWidget.AddTab(tab, "chat")
+}
+
 // CreateChatWindow creates a window which contains the log and the ability to send messages
 func CreateChatWindow(client *Client) {
-	err := ui.Main(func() {
-		entry := ui.NewEntry()
-		button := ui.NewButton("Ok")
-		logView = ui.NewLabel("")
-		box := ui.NewVerticalBox()
-		label := ui.NewLabel("Enter your name:")
+	// Create application
+	app := widgets.NewQApplication(len(os.Args), os.Args)
 
-		// Adjust for initial username
-		box.Append(label, false)
-		box.Append(entry, false)
-		box.Append(button, false)
-		box.Append(logView, false)
-		window := ui.NewWindow("Hello", 200, 100, false)
-		window.SetChild(box)
+	// Create new tab widget
+	tabWidget = widgets.NewQTabWidget(nil)
 
-		// Maybe we make a new box here for the log and append the text as it comes in
+	// Create main window
+	window := widgets.NewQMainWindow(nil, 0)
+	window.SetWindowTitle("Hello World Example")
+	window.SetMinimumSize2(200, 200)
 
-		button.OnClicked(func(*ui.Button) {
-			assignUserName(client, entry.Text())
-			// Reset the text
-			entry.SetText("")
+	//********************************
+	// Create main layout
+	layout := widgets.NewQVBoxLayout()
 
-			// Username has been entered, now let's change this to send messages
-			label.SetText("Enter a message:")
+	// Create main widget and set the layout
+	mainWidget := widgets.NewQWidget(nil, 0)
+	mainWidget.SetLayout(layout)
 
-			// Retrieve log
-			serverLog, err := getServerLog(client)
-			if err != nil {
-				logView.SetText("Unable to retrieve server log.")
-			}
+	// Create a line edit and add it to the layout
+	usernameInput := widgets.NewQLineEdit(nil)
+	usernameInput.SetPlaceholderText("Enter your username")
+	layout.AddWidget(usernameInput, 0, 0)
 
-			// Spin off the goroutine to update the log accordingly
-			for _, message := range serverLog {
-				addMessageToLogView(message)
-			}
+	// Create a button and add it to the layout
+	usernameButton := widgets.NewQPushButton2("Submit", nil)
+	layout.AddWidget(usernameButton, 0, 0)
+	//********************************
 
-			// Now we make this button send messages
-			button.OnClicked(func(*ui.Button) {
-				// Send the message to the server
-				client.sendMessage(entry.Text())
-				// Reset the text
-				entry.SetText("")
-			})
-		})
-		window.OnClosing(func(*ui.Window) bool {
-			ui.Quit()
-			return true
-		})
-
-		window.Show()
+	// Connect event for button
+	usernameButton.ConnectClicked(func(checked bool) {
+		assignUserName(client, usernameInput.Text())
+		tabWidget.RemoveTab(0)
+		createChatTab()
 	})
-	if err != nil {
-		panic(err)
-	}
+
+	tabWidget.AddTab(mainWidget, "Config")
+
+	// Set main widget as the central widget of the window
+	window.SetCentralWidget(tabWidget)
+
+	// Show the window
+	window.Show()
+
+	// Execute app
+	app.Exec()
+
+	// err := ui.Main(func() {
+	// 	entry := ui.NewEntry()
+	// 	button := ui.NewButton("Ok")
+	// 	logView = ui.NewLabel("")
+	// 	box := ui.NewVerticalBox()
+	// 	label := ui.NewLabel("Enter your name:")
+
+	// 	// Adjust for initial username
+	// 	box.Append(label, false)
+	// 	box.Append(entry, false)
+	// 	box.Append(button, false)
+	// 	box.Append(logView, false)
+	// 	window := ui.NewWindow("Hello", 200, 100, false)
+	// 	window.SetChild(box)
+
+	// 	// Maybe we make a new box here for the log and append the text as it comes in
+
+	// 	button.OnClicked(func(*ui.Button) {
+	// 		assignUserName(client, entry.Text())
+	// 		// Reset the text
+	// 		entry.SetText("")
+
+	// 		// Username has been entered, now let's change this to send messages
+	// 		label.SetText("Enter a message:")
+
+	// 		// Retrieve log
+	// 		serverLog, err := getServerLog(client)
+	// 		if err != nil {
+	// 			logView.SetText("Unable to retrieve server log.")
+	// 		}
+
+	// 		// Spin off the goroutine to update the log accordingly
+	// 		for _, message := range serverLog {
+	// 			addMessageToLogView(message)
+	// 		}
+
+	// 		// Now we make this button send messages
+	// 		button.OnClicked(func(*ui.Button) {
+	// 			// Send the message to the server
+	// 			client.sendMessage(entry.Text())
+	// 			// Reset the text
+	// 			entry.SetText("")
+	// 		})
+	// 	})
+	// 	window.OnClosing(func(*ui.Window) bool {
+	// 		ui.Quit()
+	// 		return true
+	// 	})
+
+	// 	window.Show()
+	// })
+	// if err != nil {
+	// 	panic(err)
+	// }
 }

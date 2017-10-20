@@ -1,3 +1,7 @@
 main
 a1
 a1.exe
+
+.vscode/
+deploy/
+linux/
