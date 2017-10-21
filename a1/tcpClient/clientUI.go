@@ -87,7 +87,7 @@ func createChatTab(client *Client) {
 }
 
 // CreateChatWindow creates a window which contains the log and the ability to send messages
-func CreateChatWindow(client *Client) {
+func CreateChatWindow(client *Client) *widgets.QApplication {
 	// Create application
 	app := widgets.NewQApplication(len(os.Args), os.Args)
 
@@ -102,7 +102,17 @@ func CreateChatWindow(client *Client) {
 	//********************************
 	// Create main layout
 	layout := widgets.NewQVBoxLayout()
+	//********************************
+	// Create a line edit and add it to the layout
+	portInput := widgets.NewQLineEdit(nil)
+	portInput.SetPlaceholderText("Port")
+	portInput.SetValidator(gui.NewQIntValidator(portInput))
+	layout.AddWidget(portInput, 0, 0)
 
+	// Create a button and add it to the layout
+	portButton := widgets.NewQPushButton2("Submit", nil)
+	layout.AddWidget(portButton, 0, 0)
+	//********************************
 	// Create main widget and set the layout
 	mainWidget := widgets.NewQWidget(nil, 0)
 	mainWidget.SetLayout(layout)
@@ -118,16 +128,6 @@ func CreateChatWindow(client *Client) {
 	usernameButton.SetEnabled(false)
 	layout.AddWidget(usernameButton, 0, 0)
 	//********************************
-	// Create a line edit and add it to the layout
-	portInput := widgets.NewQLineEdit(nil)
-	portInput.SetPlaceholderText("Port")
-	portInput.SetValidator(gui.NewQIntValidator(portInput))
-	layout.AddWidget(portInput, 0, 0)
-
-	// Create a button and add it to the layout
-	portButton := widgets.NewQPushButton2("Submit", nil)
-	layout.AddWidget(portButton, 0, 0)
-	//********************************
 
 	// Connect event for button
 	portButton.ConnectClicked(func(checked bool) {
@@ -139,6 +139,8 @@ func CreateChatWindow(client *Client) {
 			os.Exit(1)
 		}
 		clientConfig.ClientConfig.MessagePort = uint16(port)
+
+		go client.subscribeToServer()
 
 		usernameInput.SetEnabled(true)
 		usernameButton.SetEnabled(true)
@@ -160,7 +162,7 @@ func CreateChatWindow(client *Client) {
 	window.Show()
 
 	// Execute app
-	app.Exec()
+	return app
 
 	// err := ui.Main(func() {
 	// 	entry := ui.NewEntry()

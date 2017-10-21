@@ -15,7 +15,7 @@ var once sync.Once
 // GetInstance returns a singleton instance of the program configuration
 func GetInstance() *Config {
 	once.Do(func() {
-		instance = &Config{}
+		instance = &Config{ClientConfig: &ClientConfig{}}
 	})
 	return instance
 }

@@ -1,6 +1,7 @@
 package tcpClient
 
 import (
+	"436bin/a1/config"
 	"436bin/a1/model"
 	"encoding/json"
 	"io/ioutil"
@@ -106,10 +107,13 @@ func getServerLog(c *Client) ([]*model.Message, error) {
 	return serverLog, nil
 }
 
-func subscribeToServer(client *Client) {
+func (client *Client) subscribeToServer() {
 	fmt.Println("Starting client message subscription...")
 	http.HandleFunc("/message", client.receiveMessage)
-	fmt.Println((http.ListenAndServe(":9081", nil).Error()))
+	fmt.Println(config.GetInstance())
+	fmt.Println(config.GetInstance().ClientConfig)
+	fmt.Println(config.GetInstance().ClientConfig.MessagePort)
+	fmt.Println((http.ListenAndServe(fmt.Sprintf(":%d", config.GetInstance().ClientConfig.MessagePort), nil).Error()))
 }
 
 // Create makes a new tcp client and waits to send a message to the target server.
@@ -120,8 +124,7 @@ func Create() {
 		HTTPClient: &http.Client{},
 	}
 
-	go subscribeToServer(client)
-
 	// And now we create the GUI
-	CreateChatWindow(client)
+	chatApp := CreateChatWindow(client)
+	chatApp.Exec()
 }
