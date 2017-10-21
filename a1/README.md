@@ -1,5 +1,5 @@
 
-# TCP Socket Based Chat Client + Server
+# HTTP Chat Client + Server
 
 A client and server implementation which relies on HTTP for communication.
 
