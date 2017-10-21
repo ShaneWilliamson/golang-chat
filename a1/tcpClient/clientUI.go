@@ -1,11 +1,14 @@
 package tcpClient
 
 import (
+	"436bin/a1/config"
 	"436bin/a1/model"
+
 	"fmt"
-
 	"os"
+	"strconv"
 
+	"github.com/therecipe/qt/gui"
 	"github.com/therecipe/qt/widgets"
 )
 
@@ -107,12 +110,39 @@ func CreateChatWindow(client *Client) {
 	// Create a line edit and add it to the layout
 	usernameInput := widgets.NewQLineEdit(nil)
 	usernameInput.SetPlaceholderText("Enter your username")
+	usernameInput.SetEnabled(false)
 	layout.AddWidget(usernameInput, 0, 0)
 
 	// Create a button and add it to the layout
 	usernameButton := widgets.NewQPushButton2("Submit", nil)
+	usernameButton.SetEnabled(false)
 	layout.AddWidget(usernameButton, 0, 0)
 	//********************************
+	// Create a line edit and add it to the layout
+	portInput := widgets.NewQLineEdit(nil)
+	portInput.SetPlaceholderText("Port")
+	portInput.SetValidator(gui.NewQIntValidator(portInput))
+	layout.AddWidget(portInput, 0, 0)
+
+	// Create a button and add it to the layout
+	portButton := widgets.NewQPushButton2("Submit", nil)
+	layout.AddWidget(portButton, 0, 0)
+	//********************************
+
+	// Connect event for button
+	portButton.ConnectClicked(func(checked bool) {
+		clientConfig := config.GetInstance()
+
+		port, err := strconv.ParseUint(portInput.Text(), 10, 16)
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
+		clientConfig.ClientConfig.MessagePort = uint16(port)
+
+		usernameInput.SetEnabled(true)
+		usernameButton.SetEnabled(true)
+	})
 
 	// Connect event for button
 	usernameButton.ConnectClicked(func(checked bool) {
