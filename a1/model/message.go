@@ -7,8 +7,9 @@ import (
 
 // Message is what is transferred between the client and server, contains the username and body of the message
 type Message struct {
-	UserName string
-	Body     string
+	ChatRoomName string
+	UserName     string
+	Body         string
 }
 
 // ReadableFormat returns a human-friendly representation of the message

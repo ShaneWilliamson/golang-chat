@@ -47,9 +47,9 @@ func createBufioReader() *bufio.Reader {
 	return bufio.NewReader(os.Stdin)
 }
 
-func constructMessage(userName string, body string) *model.Message {
+func constructMessage(chatRoomName string, userName string, body string) *model.Message {
 	// Marshal the message, and prepare it for transit
-	message := &model.Message{UserName: userName, Body: strings.TrimSpace(body)}
+	message := &model.Message{ChatRoomName: chatRoomName, UserName: userName, Body: strings.TrimSpace(body)}
 	return message
 }
 
@@ -57,9 +57,9 @@ func printMessage(m *model.Message) {
 	fmt.Printf("%s: %s\n", m.UserName, m.Body)
 }
 
-func (client *Client) sendMessage(text string) {
+func (client *Client) sendMessage(chatRoomName string, text string) {
 	// Format the message for serialization
-	m := constructMessage(client.UserName, text)
+	m := constructMessage(chatRoomName, client.UserName, text)
 	messageBuffer := model.ConvertMessageToBuffer(m)
 
 	resp, err := client.HTTPClient.Post("http://localhost:8081/message", "application/json; charset=utf-8", messageBuffer)
@@ -92,8 +92,8 @@ func readMessageFromUser(client *Client) (string, error) {
 	return text, nil
 }
 
-func getServerLog(c *Client) ([]*model.Message, error) {
-	res, err := c.HTTPClient.Get("http://localhost:8081/log")
+func (client *Client) getServerLog() ([]*model.Message, error) {
+	res, err := client.HTTPClient.Get("http://localhost:8081/log")
 	// Wait for the response to complete
 	defer res.Body.Close()
 	if err != nil {
@@ -105,6 +105,21 @@ func getServerLog(c *Client) ([]*model.Message, error) {
 	var serverLog []*model.Message
 	json.Unmarshal(bodyBytes, &serverLog)
 	return serverLog, nil
+}
+
+func (client *Client) getChatRooms() ([]*model.ChatRoom, error) {
+	res, err := client.HTTPClient.Get("http://localhost:8081/chatrooms/list")
+	// Wait for the response to complete
+	defer res.Body.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		return nil, err
+	}
+	bodyBytes, _ := ioutil.ReadAll(res.Body)
+	fmt.Println(string(bodyBytes))
+	var chatRooms []*model.ChatRoom
+	json.Unmarshal(bodyBytes, &chatRooms)
+	return chatRooms, nil
 }
 
 func (client *Client) subscribeToServer() {

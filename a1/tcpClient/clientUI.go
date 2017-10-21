@@ -37,7 +37,7 @@ func scrollChatToBottom() {
 	logScrollBar.SetValue(logScrollBar.MaximumHeight())
 }
 
-func createChatTab(client *Client) {
+func createChatTab(client *Client, roomName string) {
 	tab := widgets.NewQWidget(nil, 0)
 	layout := widgets.NewQVBoxLayout()
 	logLayout := widgets.NewQVBoxLayout()
@@ -62,14 +62,14 @@ func createChatTab(client *Client) {
 		if messageInput.Text() == "" {
 			return
 		}
-		client.sendMessage(messageInput.Text())
+		client.sendMessage(roomName, messageInput.Text())
 		// Reset the text
 		messageInput.SetText("")
 	})
 	inputLayout.InsertWidget(0, messageInput, 0, 0)
 	inputLayout.InsertWidget(1, submitButton, 0, 0)
 
-	serverLog, err := getServerLog(client)
+	serverLog, err := client.getServerLog()
 	if err != nil {
 		logView.SetText("Unable to retrieve server log.")
 	}
@@ -81,9 +81,38 @@ func createChatTab(client *Client) {
 
 	messageInput.ConnectReturnPressed(submitButton.Click)
 
-	tabWidget.AddTab(tab, "chat")
+	tabWidget.AddTab(tab, roomName)
 
 	scrollChatToBottom()
+}
+
+func createChatRoomSelectionTab(client *Client) {
+	tab := widgets.NewQWidget(nil, 0)
+	layout := widgets.NewQVBoxLayout()
+	getChatRoomOptions(client, layout)
+	tab.SetLayout(layout)
+	tabWidget.AddTab(tab, "Chat Rooms")
+}
+
+func getChatRoomOptions(client *Client, layout *widgets.QVBoxLayout) {
+	chatRooms, err := client.getChatRooms()
+	if err != nil {
+		errLabel := widgets.NewQLabel2("An error occurred", nil, 0)
+		layout.InsertWidget(0, errLabel, 0, 0)
+		return
+	}
+	if chatRooms == nil || len(chatRooms) == 0 {
+		errLabel := widgets.NewQLabel2("No chat rooms exist", nil, 0)
+		layout.InsertWidget(0, errLabel, 0, 0)
+		return
+	}
+	roomsComboBox := widgets.NewQComboBox(nil)
+	var rooms []string
+	for _, room := range chatRooms {
+		rooms = append(rooms, room.Name)
+	}
+	roomsComboBox.AddItems(rooms)
+	layout.InsertWidget(0, roomsComboBox, 0, 0)
 }
 
 // CreateChatWindow creates a window which contains the log and the ability to send messages
@@ -150,7 +179,8 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 	usernameButton.ConnectClicked(func(checked bool) {
 		assignUserName(client, usernameInput.Text())
 		tabWidget.RemoveTab(0)
-		createChatTab(client)
+		createChatRoomSelectionTab(client)
+		createChatTab(client, "todo")
 	})
 
 	tabWidget.AddTab(mainWidget, "Config")

@@ -13,6 +13,7 @@ import (
 )
 
 var log []*model.Message // This will be removed when we implement rooms
+var rooms []*model.ChatRoom
 
 func sendLogToConn(c *net.Conn) {
 	// TODO convert and serialize for http request
@@ -60,6 +61,18 @@ func getLog(writer http.ResponseWriter, req *http.Request) {
 	writer.Write(serializedLog)
 }
 
+func listRooms(writer http.ResponseWriter, req *http.Request) {
+	serializedRooms, err := json.Marshal(&log)
+	if err != nil {
+		fmt.Println("Marshalling the log has failed.")
+		writer.WriteHeader(http.StatusInternalServerError)
+	}
+	fmt.Println(string(serializedRooms))
+	writer.Write(serializedRooms)
+}
+
+// *************
+
 func logMessage(m *model.Message) {
 	fmt.Printf("%s: %s\n", string(m.UserName), string(m.Body))
 	log = append(log, m)
@@ -87,7 +100,7 @@ func Create() {
 	// Register our HTTP routes
 	http.HandleFunc("/message", receiveMessage)
 	http.HandleFunc("/log", getLog)
-	// http.HandleFunc("/chatrooms/list", todo)
+	http.HandleFunc("/chatrooms/list", listRooms)
 	// http.HandleFunc("/chatrooms/join", todo)
 	// http.HandleFunc("/chatrooms/leave", todo)
 
