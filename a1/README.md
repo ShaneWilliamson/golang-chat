@@ -1,29 +1,21 @@
 
-# TCP Socket Based Chat Client + Server
+# HTTP Chat Client + Server
 
-A client and server implementation which relies on TCP sockets for communication.
+A client and server implementation which relies on HTTP for communication.
 
 
 ## Server Architecture
 
-### Lifecycle of the server:
+### Server actions:
 
-* Server is created
-* Server initializes an empty slice of Users (max 10 concurrent per room)
-* Server creates pool of available connections
-    * spin up 10 goroutines which wait for new connections
-    * spin up x goroutines which wait for new connections
-* The server waits for connections to close and spins up new goroutines
+* Create routes for the clients to hit with HTTP requests
+  * Routes for chat rooms
+    * Join, List, Create, Leave
+  * Routes for Chat
+    * Send message
+* Broadcast new messages to clients
 
-### Server Actions:
-
-#### Chat rooms
-
-* List chat rooms
-* Create chat room
-* Join chat room
-
-#### Messages
+##### Messages
 
 * Send message log for chosen chat room upon connection by client
 * Receive message from user, and store into log
