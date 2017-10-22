@@ -12,32 +12,34 @@ import (
 	"github.com/therecipe/qt/widgets"
 )
 
-var log string
-var logView *widgets.QTextEdit
-var logScrollBar *widgets.QScrollBar
-var tabWidget *widgets.QTabWidget
-
-func addMessageToLogView(message *model.Message) {
-	if logView == nil {
+func addMessageToLogView(message *model.Message, chatTab *model.ClientChatTab) {
+	if chatTab.LogView == nil {
 		fmt.Println("Log view not created yet, will not add new message to log")
 		return
 	}
 	newEntry := message.ReadableFormat()
-	log += newEntry
-	logView.SetText(log)
-	scrollChatToBottom()
+	chatTab.Log += newEntry
+	chatTab.LogView.SetText(chatTab.Log)
+	scrollChatToBottom(chatTab)
+}
+
+// DisplayErrorDialogWithMessage shows an error dialog with the specified message
+func DisplayErrorDialogWithMessage(errorMessage string) {
+	widgets.QMessageBox_Information(nil, "Error", "Could not join chat room",
+		widgets.QMessageBox__Ok, widgets.QMessageBox__Ok)
 }
 
 func assignUserName(client *Client, username string) {
 	// We assign the username to the client
-	client.UserName = username
+	client.User.UserName = username
 }
 
-func scrollChatToBottom() {
-	logScrollBar.SetValue(logScrollBar.MaximumHeight())
+func scrollChatToBottom(chatTab *model.ClientChatTab) {
+	chatTab.LogScrollBar.SetValue(chatTab.LogScrollBar.MaximumHeight())
 }
 
-func createChatTab(client *Client, roomName string) {
+// CreateChatTab creates a new chat tab
+func CreateChatTab(client *Client, roomName string) {
 	tab := widgets.NewQWidget(nil, 0)
 	layout := widgets.NewQVBoxLayout()
 	logLayout := widgets.NewQVBoxLayout()
@@ -47,9 +49,9 @@ func createChatTab(client *Client, roomName string) {
 	layout.InsertLayout(1, inputLayout, 0)
 	tab.SetLayout(layout)
 
-	logView = widgets.NewQTextEdit2("", nil)
+	logView := widgets.NewQTextEdit2("", nil)
 	logView.SetReadOnly(true)
-	logScrollBar = widgets.NewQScrollBar(nil)
+	logScrollBar := widgets.NewQScrollBar(nil)
 	logView.SetVerticalScrollBar(logScrollBar)
 	logLayout.AddWidget(logView, 0, 0)
 
@@ -68,22 +70,22 @@ func createChatTab(client *Client, roomName string) {
 	inputLayout.InsertWidget(0, messageInput, 0, 0)
 	inputLayout.InsertWidget(1, submitButton, 0, 0)
 
-	serverLog, err := client.getServerLog()
+	serverLog, err := client.getServerLog(roomName)
 	if err != nil {
 		logView.SetText("Unable to retrieve server log.")
 	}
 	// Set up the chat log
-	log = ""
+	chatTab := &model.ClientChatTab{Log: "", LogView: logView, LogScrollBar: logScrollBar, Name: roomName, Tab: tab}
 	for _, message := range serverLog {
-		addMessageToLogView(message)
+		addMessageToLogView(message, chatTab)
 	}
 
 	messageInput.ConnectReturnPressed(submitButton.Click)
 
-	tabWidget.AddTab(tab, roomName)
-	model.GetUIInstance().ChatTabs = append(model.GetUIInstance().ChatTabs, tab)
+	model.GetUIInstance().TabWidget.AddTab(tab, roomName)
+	model.GetUIInstance().ChatTabs = append(model.GetUIInstance().ChatTabs, chatTab)
 
-	scrollChatToBottom()
+	scrollChatToBottom(chatTab)
 }
 
 func createChatRoomSelectionTab(client *Client) {
@@ -92,7 +94,7 @@ func createChatRoomSelectionTab(client *Client) {
 	tab := widgets.NewQWidget(nil, 0)
 	tab.SetLayout(layout)
 
-	tabWidget.InsertTab(0, tab, "Chat Rooms")
+	model.GetUIInstance().TabWidget.InsertTab(0, tab, "Chat Rooms")
 	model.GetUIInstance().ChatRoomManagementTab.Tab = tab
 }
 
@@ -125,7 +127,7 @@ func getChatRoomOptionsLayout(client *Client) *widgets.QHBoxLayout {
 
 	joinButton := widgets.NewQPushButton2("Join", nil)
 	joinButton.ConnectClicked(func(checked bool) {
-		fmt.Println(roomsComboBox.CurrentText())
+		client.joinChatRoom(roomsComboBox.CurrentText())
 	})
 
 	layout.InsertWidget(0, roomsComboBox, 0, 0)
@@ -147,9 +149,9 @@ func makeChatRoomsComboBox(chatRooms []*model.ChatRoom) *widgets.QComboBox {
 func getChatRoomRefreshLayout(client *Client) *widgets.QVBoxLayout {
 	refreshButton := widgets.NewQPushButton2("Refresh", nil)
 	refreshButton.ConnectClicked(func(checked bool) {
-		tabWidget.RemoveTab(tabWidget.IndexOf(model.GetUIInstance().ChatRoomManagementTab.Tab))
+		model.GetUIInstance().TabWidget.RemoveTab(model.GetUIInstance().TabWidget.IndexOf(model.GetUIInstance().ChatRoomManagementTab.Tab))
 		createChatRoomSelectionTab(client)
-		tabWidget.SetCurrentWidget(model.GetUIInstance().ChatRoomManagementTab.Tab)
+		model.GetUIInstance().TabWidget.SetCurrentWidget(model.GetUIInstance().ChatRoomManagementTab.Tab)
 	})
 
 	layout := widgets.NewQVBoxLayout()
@@ -183,7 +185,7 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 	app := widgets.NewQApplication(len(os.Args), os.Args)
 
 	// Create new tab widget
-	tabWidget = widgets.NewQTabWidget(nil)
+	model.GetUIInstance().TabWidget = widgets.NewQTabWidget(nil)
 
 	// Create main window
 	window := widgets.NewQMainWindow(nil, 0)
@@ -240,15 +242,27 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 	// Connect event for button
 	usernameButton.ConnectClicked(func(checked bool) {
 		assignUserName(client, usernameInput.Text())
-		tabWidget.RemoveTab(0)
+		model.GetUIInstance().TabWidget.RemoveTab(0)
 		createChatRoomSelectionTab(client)
-		createChatTab(client, "todo")
+		// Get chat rooms for user
+		rooms, err := client.getChatRoomsForUser()
+		if err != nil {
+			widgets.QMessageBox_Information(nil, "Error", "Could not join user's chat rooms",
+				widgets.QMessageBox__Ok, widgets.QMessageBox__Ok)
+			return
+		}
+		if rooms == nil {
+			return
+		}
+		for _, room := range rooms {
+			CreateChatTab(client, room.Name)
+		}
 	})
 
-	tabWidget.AddTab(mainWidget, "Config")
+	model.GetUIInstance().TabWidget.AddTab(mainWidget, "Config")
 
 	// Set main widget as the central widget of the window
-	window.SetCentralWidget(tabWidget)
+	window.SetCentralWidget(model.GetUIInstance().TabWidget)
 
 	// Show the window
 	window.Show()
