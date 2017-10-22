@@ -164,6 +164,11 @@ func (client *Client) createChatRoom(roomName string) {
 }
 
 func (client *Client) joinChatRoom(roomName string) {
+	for _, tab := range model.GetUIInstance().ChatTabs {
+		if tab.Name == roomName {
+			return
+		}
+	}
 	// Format the body for serialization
 	joinRequest := &model.JoinChatRequest{User: client.User, RoomName: roomName}
 	b := new(bytes.Buffer)
