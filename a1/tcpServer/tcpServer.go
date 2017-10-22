@@ -3,41 +3,16 @@ package tcpServer
 import (
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
-	"os"
 
 	"436bin/a1/model"
-	"encoding/gob"
 	"encoding/json"
 )
 
 var log []*model.Message // This will be removed when we implement rooms
 var rooms []*model.ChatRoom
 
-func sendLogToConn(c *net.Conn) {
-	// TODO convert and serialize for http request
-	enc := gob.NewEncoder(*c) // to write
-	err := enc.Encode(log)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-}
-
-// TODO delete this after transition to http requests
-func acceptNewConn(link net.Listener) net.Conn {
-	// Wait for the next call, and returns a generic connection
-	c, err := link.Accept()
-	if err != nil {
-		// Creation of new connection failed
-		fmt.Println("Failed to accept a new connection. Exiting.")
-		os.Exit(3)
-	}
-	// Send log to new connection
-	sendLogToConn(&c)
-
-	return c
-}
+const maxUsers int = 10
 
 func receiveMessage(writer http.ResponseWriter, req *http.Request) {
 	bodyBytes, err := ioutil.ReadAll(req.Body)
@@ -62,13 +37,24 @@ func getLog(writer http.ResponseWriter, req *http.Request) {
 }
 
 func listRooms(writer http.ResponseWriter, req *http.Request) {
-	serializedRooms, err := json.Marshal(&log)
+	serializedRooms, err := json.Marshal(&rooms)
 	if err != nil {
-		fmt.Println("Marshalling the log has failed.")
+		fmt.Println("Marshalling the rooms has failed.")
 		writer.WriteHeader(http.StatusInternalServerError)
 	}
 	fmt.Println(string(serializedRooms))
 	writer.Write(serializedRooms)
+}
+
+func createRoom(writer http.ResponseWriter, req *http.Request) {
+	bodyBytes, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		fmt.Println("Error reading the room from the request body")
+		writer.WriteHeader(http.StatusInternalServerError)
+	}
+	var chatRoomName string
+	json.Unmarshal(bodyBytes, &chatRoomName)
+	rooms = append(rooms, &model.ChatRoom{Users: nil, Name: chatRoomName, MaxUsers: maxUsers})
 }
 
 // *************
@@ -101,6 +87,7 @@ func Create() {
 	http.HandleFunc("/message", receiveMessage)
 	http.HandleFunc("/log", getLog)
 	http.HandleFunc("/chatrooms/list", listRooms)
+	http.HandleFunc("/chatrooms/create", createRoom)
 	// http.HandleFunc("/chatrooms/join", todo)
 	// http.HandleFunc("/chatrooms/leave", todo)
 

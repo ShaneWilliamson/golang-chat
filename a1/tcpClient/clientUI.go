@@ -56,7 +56,6 @@ func createChatTab(client *Client, roomName string) {
 	messageInput := widgets.NewQLineEdit(nil)
 	messageInput.SetPlaceholderText("Enter message")
 	submitButton := widgets.NewQPushButton2("Send", nil)
-	fmt.Println(submitButton.AutoDefault())
 	submitButton.SetAutoDefault(true)
 	submitButton.ConnectClicked(func(checked bool) {
 		if messageInput.Text() == "" {
@@ -82,37 +81,100 @@ func createChatTab(client *Client, roomName string) {
 	messageInput.ConnectReturnPressed(submitButton.Click)
 
 	tabWidget.AddTab(tab, roomName)
+	model.GetUIInstance().ChatTabs = append(model.GetUIInstance().ChatTabs, tab)
 
 	scrollChatToBottom()
 }
 
 func createChatRoomSelectionTab(client *Client) {
+	layout := createChatRoomSelectionLayout(client)
+
 	tab := widgets.NewQWidget(nil, 0)
-	layout := widgets.NewQVBoxLayout()
-	getChatRoomOptions(client, layout)
 	tab.SetLayout(layout)
-	tabWidget.AddTab(tab, "Chat Rooms")
+
+	tabWidget.InsertTab(0, tab, "Chat Rooms")
+	model.GetUIInstance().ChatRoomManagementTab.Tab = tab
 }
 
-func getChatRoomOptions(client *Client, layout *widgets.QVBoxLayout) {
+func createChatRoomSelectionLayout(client *Client) *widgets.QVBoxLayout {
+	layout := widgets.NewQVBoxLayout()
+	listJoinLayout := getChatRoomOptionsLayout(client)
+	listRefreshLayout := getChatRoomRefreshLayout(client)
+	createLayout := getChatRoomCreateLayout(client)
+
+	layout.InsertLayout(0, listJoinLayout, 0)
+	layout.InsertLayout(1, listRefreshLayout, 0)
+	layout.InsertLayout(2, createLayout, 0)
+	return layout
+}
+
+func getChatRoomOptionsLayout(client *Client) *widgets.QHBoxLayout {
+	layout := widgets.NewQHBoxLayout()
 	chatRooms, err := client.getChatRooms()
 	if err != nil {
 		errLabel := widgets.NewQLabel2("An error occurred", nil, 0)
 		layout.InsertWidget(0, errLabel, 0, 0)
-		return
+		return layout
 	}
 	if chatRooms == nil || len(chatRooms) == 0 {
 		errLabel := widgets.NewQLabel2("No chat rooms exist", nil, 0)
 		layout.InsertWidget(0, errLabel, 0, 0)
-		return
+		return layout
 	}
+	roomsComboBox := makeChatRoomsComboBox(chatRooms)
+
+	joinButton := widgets.NewQPushButton2("Join", nil)
+	joinButton.ConnectClicked(func(checked bool) {
+		fmt.Println(roomsComboBox.CurrentText())
+	})
+
+	layout.InsertWidget(0, roomsComboBox, 0, 0)
+	layout.InsertWidget(1, joinButton, 0, 0)
+
+	return layout
+}
+
+func makeChatRoomsComboBox(chatRooms []*model.ChatRoom) *widgets.QComboBox {
 	roomsComboBox := widgets.NewQComboBox(nil)
 	var rooms []string
 	for _, room := range chatRooms {
 		rooms = append(rooms, room.Name)
 	}
 	roomsComboBox.AddItems(rooms)
-	layout.InsertWidget(0, roomsComboBox, 0, 0)
+	return roomsComboBox
+}
+
+func getChatRoomRefreshLayout(client *Client) *widgets.QVBoxLayout {
+	refreshButton := widgets.NewQPushButton2("Refresh", nil)
+	refreshButton.ConnectClicked(func(checked bool) {
+		tabWidget.RemoveTab(tabWidget.IndexOf(model.GetUIInstance().ChatRoomManagementTab.Tab))
+		createChatRoomSelectionTab(client)
+		tabWidget.SetCurrentWidget(model.GetUIInstance().ChatRoomManagementTab.Tab)
+	})
+
+	layout := widgets.NewQVBoxLayout()
+	layout.InsertWidget(0, refreshButton, 0, 2)
+
+	return layout
+}
+
+func getChatRoomCreateLayout(client *Client) *widgets.QHBoxLayout {
+	layout := widgets.NewQHBoxLayout()
+	createInput := widgets.NewQLineEdit(nil)
+	createInput.SetPlaceholderText("Enter new chat room name")
+	submitButton := widgets.NewQPushButton2("Create", nil)
+	submitButton.ConnectClicked(func(checked bool) {
+		if createInput.Text() == "" {
+			return
+		}
+		client.createChatRoom(createInput.Text())
+		// Reset the text
+		createInput.SetText("")
+	})
+	layout.InsertWidget(0, createInput, 0, 0)
+	layout.InsertWidget(1, submitButton, 0, 0)
+
+	return layout
 }
 
 // CreateChatWindow creates a window which contains the log and the ability to send messages
@@ -193,59 +255,4 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 
 	// Execute app
 	return app
-
-	// err := ui.Main(func() {
-	// 	entry := ui.NewEntry()
-	// 	button := ui.NewButton("Ok")
-	// 	logView = ui.NewLabel("")
-	// 	box := ui.NewVerticalBox()
-	// 	label := ui.NewLabel("Enter your name:")
-
-	// 	// Adjust for initial username
-	// 	box.Append(label, false)
-	// 	box.Append(entry, false)
-	// 	box.Append(button, false)
-	// 	box.Append(logView, false)
-	// 	window := ui.NewWindow("Hello", 200, 100, false)
-	// 	window.SetChild(box)
-
-	// 	// Maybe we make a new box here for the log and append the text as it comes in
-
-	// 	button.OnClicked(func(*ui.Button) {
-	// 		assignUserName(client, entry.Text())
-	// 		// Reset the text
-	// 		entry.SetText("")
-
-	// 		// Username has been entered, now let's change this to send messages
-	// 		label.SetText("Enter a message:")
-
-	// 		// Retrieve log
-	// serverLog, err := getServerLog(client)
-	// if err != nil {
-	// 	logView.SetText("Unable to retrieve server log.")
-	// }
-
-	// 		// Spin off the goroutine to update the log accordingly
-	// 		for _, message := range serverLog {
-	// 			addMessageToLogView(message)
-	// 		}
-
-	// 		// Now we make this button send messages
-	// 		button.OnClicked(func(*ui.Button) {
-	// 			// Send the message to the server
-	// client.sendMessage(entry.Text())
-	// // Reset the text
-	// entry.SetText("")
-	// 		})
-	// 	})
-	// 	window.OnClosing(func(*ui.Window) bool {
-	// 		ui.Quit()
-	// 		return true
-	// 	})
-
-	// 	window.Show()
-	// })
-	// if err != nil {
-	// 	panic(err)
-	// }
 }

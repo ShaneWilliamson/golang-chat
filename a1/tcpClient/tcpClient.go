@@ -3,6 +3,7 @@ package tcpClient
 import (
 	"436bin/a1/config"
 	"436bin/a1/model"
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
@@ -68,7 +69,6 @@ func (client *Client) sendMessage(chatRoomName string, text string) {
 		fmt.Println(err.Error())
 		return
 	}
-	fmt.Println("Successfully sent message")
 }
 
 func (client *Client) receiveMessage(writer http.ResponseWriter, req *http.Request) {
@@ -101,7 +101,6 @@ func (client *Client) getServerLog() ([]*model.Message, error) {
 		return nil, err
 	}
 	bodyBytes, _ := ioutil.ReadAll(res.Body)
-	fmt.Println(string(bodyBytes))
 	var serverLog []*model.Message
 	json.Unmarshal(bodyBytes, &serverLog)
 	return serverLog, nil
@@ -116,18 +115,28 @@ func (client *Client) getChatRooms() ([]*model.ChatRoom, error) {
 		return nil, err
 	}
 	bodyBytes, _ := ioutil.ReadAll(res.Body)
-	fmt.Println(string(bodyBytes))
 	var chatRooms []*model.ChatRoom
 	json.Unmarshal(bodyBytes, &chatRooms)
 	return chatRooms, nil
 }
 
+func (client *Client) createChatRoom(roomName string) {
+	// Format the body for serialization
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(&roomName)
+
+	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/create", "application/json; charset=utf-8", b)
+	defer resp.Body.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	fmt.Printf("Successfully created room: %s\n", roomName)
+}
+
 func (client *Client) subscribeToServer() {
 	fmt.Println("Starting client message subscription...")
 	http.HandleFunc("/message", client.receiveMessage)
-	fmt.Println(config.GetInstance())
-	fmt.Println(config.GetInstance().ClientConfig)
-	fmt.Println(config.GetInstance().ClientConfig.MessagePort)
 	fmt.Println((http.ListenAndServe(fmt.Sprintf(":%d", config.GetInstance().ClientConfig.MessagePort), nil).Error()))
 }
 
