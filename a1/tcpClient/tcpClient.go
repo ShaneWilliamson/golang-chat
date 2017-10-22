@@ -1,7 +1,9 @@
 package tcpClient
 
 import (
+	"436bin/a1/config"
 	"436bin/a1/model"
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
@@ -15,7 +17,7 @@ import (
 
 // Client contains our username, and helper methods
 type Client struct {
-	UserName   string // TODO Change to be a User
+	User       *model.User
 	HTTPClient *http.Client
 	Conn       *net.Conn
 }
@@ -37,7 +39,7 @@ func (client *Client) CreateUser() error {
 		return err
 	}
 	text = strings.TrimSpace(text)
-	client.UserName = text
+	client.User.UserName = text
 	return nil
 }
 
@@ -46,9 +48,9 @@ func createBufioReader() *bufio.Reader {
 	return bufio.NewReader(os.Stdin)
 }
 
-func constructMessage(userName string, body string) *model.Message {
+func constructMessage(chatRoomName string, userName string, body string) *model.Message {
 	// Marshal the message, and prepare it for transit
-	message := &model.Message{UserName: userName, Body: strings.TrimSpace(body)}
+	message := &model.Message{ChatRoomName: chatRoomName, UserName: userName, Body: strings.TrimSpace(body)}
 	return message
 }
 
@@ -56,9 +58,9 @@ func printMessage(m *model.Message) {
 	fmt.Printf("%s: %s\n", m.UserName, m.Body)
 }
 
-func (client *Client) sendMessage(text string) {
+func (client *Client) sendMessage(chatRoomName string, text string) {
 	// Format the message for serialization
-	m := constructMessage(client.UserName, text)
+	m := constructMessage(chatRoomName, client.User.UserName, text)
 	messageBuffer := model.ConvertMessageToBuffer(m)
 
 	resp, err := client.HTTPClient.Post("http://localhost:8081/message", "application/json; charset=utf-8", messageBuffer)
@@ -67,7 +69,6 @@ func (client *Client) sendMessage(text string) {
 		fmt.Println(err.Error())
 		return
 	}
-	fmt.Println("Successfully sent message")
 }
 
 func (client *Client) receiveMessage(writer http.ResponseWriter, req *http.Request) {
@@ -78,11 +79,18 @@ func (client *Client) receiveMessage(writer http.ResponseWriter, req *http.Reque
 	}
 	var message *model.Message
 	json.Unmarshal(bodyBytes, &message)
-	addMessageToLogView(message)
+	var chatTab *model.ClientChatTab
+	for _, room := range model.GetUIInstance().ChatTabs {
+		if room.Name == message.ChatRoomName {
+			chatTab = room
+			break
+		}
+	}
+	addMessageToLogView(message, chatTab)
 }
 
 func readMessageFromUser(client *Client) (string, error) {
-	fmt.Printf("%s: ", client.UserName)
+	fmt.Printf("%s: ", client.User.UserName)
 	reader := bufio.NewReader(os.Stdin)
 	text, err := reader.ReadString('\n')
 	if err != nil {
@@ -91,8 +99,12 @@ func readMessageFromUser(client *Client) (string, error) {
 	return text, nil
 }
 
-func getServerLog(c *Client) ([]*model.Message, error) {
-	res, err := c.HTTPClient.Get("http://localhost:8081/log")
+func (client *Client) getServerLog(roomName string) ([]*model.Message, error) {
+
+	// Format the message for serialization
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(&roomName)
+	res, err := client.HTTPClient.Post("http://localhost:8081/log", "application/json; charset=utf-8", b)
 	// Wait for the response to complete
 	defer res.Body.Close()
 	if err != nil {
@@ -100,16 +112,98 @@ func getServerLog(c *Client) ([]*model.Message, error) {
 		return nil, err
 	}
 	bodyBytes, _ := ioutil.ReadAll(res.Body)
-	fmt.Println(string(bodyBytes))
 	var serverLog []*model.Message
 	json.Unmarshal(bodyBytes, &serverLog)
 	return serverLog, nil
 }
 
-func subscribeToServer(client *Client) {
+func (client *Client) getChatRooms() ([]*model.ChatRoom, error) {
+	res, err := client.HTTPClient.Get("http://localhost:8081/chatrooms/list")
+	// Wait for the response to complete
+	defer res.Body.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		return nil, err
+	}
+	bodyBytes, _ := ioutil.ReadAll(res.Body)
+	var chatRooms []*model.ChatRoom
+	json.Unmarshal(bodyBytes, &chatRooms)
+	return chatRooms, nil
+}
+
+func (client *Client) getChatRoomsForUser() ([]*model.ChatRoom, error) {
+	// Format the body for serialization
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(&client.User.UserName)
+
+	res, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/forUser", "application/json; charset=utf-8", b)
+	// Wait for the response to complete
+	defer res.Body.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		return nil, err
+	}
+	bodyBytes, _ := ioutil.ReadAll(res.Body)
+	var chatRooms []*model.ChatRoom
+	json.Unmarshal(bodyBytes, &chatRooms)
+	return chatRooms, nil
+}
+
+func (client *Client) createChatRoom(roomName string) {
+	// Format the body for serialization
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(&roomName)
+
+	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/create", "application/json; charset=utf-8", b)
+	defer resp.Body.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	fmt.Printf("Successfully created room: %s\n", roomName)
+}
+
+func (client *Client) joinChatRoom(roomName string) {
+	for _, tab := range model.GetUIInstance().ChatTabs {
+		if tab.Name == roomName {
+			return
+		}
+	}
+	// Format the body for serialization
+	joinRequest := &model.JoinChatRequest{User: client.User, RoomName: roomName}
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(&joinRequest)
+
+	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/join", "application/json; charset=utf-8", b)
+	defer resp.Body.Close()
+	if err != nil || resp.StatusCode != 200 {
+		// Failed to join the chat room
+		DisplayErrorDialogWithMessage("Cannot join, max users reached")
+		return
+	}
+	CreateChatTab(client, roomName)
+}
+
+// UpdateUser updates the server about the user config
+func (client *Client) UpdateUser() error {
+	// Format the body for serialization
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(&client.User)
+
+	res, err := client.HTTPClient.Post("http://localhost:8081/user/update", "application/json; charset=utf-8", b)
+	// Wait for the response to complete
+	defer res.Body.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		return err
+	}
+	return nil
+}
+
+func (client *Client) subscribeToServer() {
 	fmt.Println("Starting client message subscription...")
 	http.HandleFunc("/message", client.receiveMessage)
-	fmt.Println((http.ListenAndServe(":9081", nil).Error()))
+	fmt.Println((http.ListenAndServe(fmt.Sprintf(":%d", config.GetInstance().ClientConfig.MessagePort), nil).Error()))
 }
 
 // Create makes a new tcp client and waits to send a message to the target server.
@@ -118,10 +212,10 @@ func Create() {
 	// Create the client
 	client := &Client{
 		HTTPClient: &http.Client{},
+		User:       &model.User{},
 	}
 
-	go subscribeToServer(client)
-
 	// And now we create the GUI
-	CreateChatWindow(client)
+	chatApp := CreateChatWindow(client)
+	chatApp.Exec()
 }
