@@ -54,7 +54,6 @@ func getLog(writer http.ResponseWriter, req *http.Request) {
 		fmt.Println("Marshalling the log has failed.")
 		writer.WriteHeader(http.StatusInternalServerError)
 	}
-	fmt.Println(string(serializedLog))
 	writer.Write(serializedLog)
 }
 
@@ -77,13 +76,15 @@ func listRoomsForUser(writer http.ResponseWriter, req *http.Request) {
 	json.Unmarshal(bodyBytes, &userName)
 
 	var roomsForUser []*model.ChatRoom
+	found := false
 	for _, user := range users {
 		if user.UserName == userName {
+			found = true
 			roomsForUser = user.ChatRooms
 		}
 	}
 	// if user not found, add the user
-	if roomsForUser == nil {
+	if !found {
 		users = append(users, &model.User{UserName: userName})
 	}
 	serializedRooms, err := json.Marshal(&roomsForUser)
@@ -134,16 +135,20 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 			return
 		}
 		// If the user isn't already in the room, add them to the room
-		localUserCopy := room.GetUser(joinRequest.User.UserName)
-		if localUserCopy == nil {
-			localUserCopy = joinRequest.User
-			room.Users = append(room.Users, joinRequest.User)
-		} else {
-			// Update the config to be what the user has specified
-			localUserCopy.Config = joinRequest.User.Config
+		// Find user
+		var user *model.User
+		for _, u := range users {
+			if u.UserName == joinRequest.User.UserName {
+				user = u
+			}
 		}
-		if localUserCopy.GetRoom(room.Name) == nil {
-			localUserCopy.ChatRooms = append(localUserCopy.ChatRooms, room)
+
+		if room.GetUser(user.UserName) == nil {
+			room.Users = append(room.Users, user)
+		}
+		user.Config = joinRequest.User.Config
+		if user.GetRoom(room.Name) == nil {
+			user.ChatRooms = append(user.ChatRooms, room)
 		}
 
 		room.Mux.Unlock()
