@@ -25,7 +25,7 @@ func addMessageToLogView(message *model.Message, chatTab *model.ClientChatTab) {
 
 // DisplayErrorDialogWithMessage shows an error dialog with the specified message
 func DisplayErrorDialogWithMessage(errorMessage string) {
-	widgets.QMessageBox_Information(nil, "Error", "Could not join chat room",
+	widgets.QMessageBox_Information(nil, "Error", errorMessage,
 		widgets.QMessageBox__Ok, widgets.QMessageBox__Ok)
 }
 
@@ -232,6 +232,7 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 			os.Exit(1)
 		}
 		clientConfig.ClientConfig.MessagePort = uint16(port)
+		client.User.Config = clientConfig.ClientConfig
 
 		go client.subscribeToServer()
 
@@ -241,6 +242,10 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 
 	// Connect event for button
 	usernameButton.ConnectClicked(func(checked bool) {
+		// Don't allow empty strings
+		if usernameInput.Text() == "" {
+			return
+		}
 		assignUserName(client, usernameInput.Text())
 		model.GetUIInstance().TabWidget.RemoveTab(0)
 		createChatRoomSelectionTab(client)

@@ -23,8 +23,16 @@ func receiveMessage(writer http.ResponseWriter, req *http.Request) {
 	}
 	var message *model.Message
 	json.Unmarshal(bodyBytes, &message)
-	logMessage(message)
-	broadcastMessage(message)
+	room, err := getRoomForName(message.ChatRoomName)
+	if err != nil {
+		fmt.Println(err.Error())
+		writer.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if room.GetUser(message.UserName) != nil {
+		go logMessage(message)
+		go broadcastMessage(message)
+	}
 }
 
 func getLog(writer http.ResponseWriter, req *http.Request) {
@@ -56,7 +64,6 @@ func listRooms(writer http.ResponseWriter, req *http.Request) {
 		fmt.Println("Marshalling the rooms has failed.")
 		writer.WriteHeader(http.StatusInternalServerError)
 	}
-	fmt.Println(string(serializedRooms))
 	writer.Write(serializedRooms)
 }
 
@@ -84,7 +91,6 @@ func listRoomsForUser(writer http.ResponseWriter, req *http.Request) {
 		fmt.Println("Marshalling the rooms has failed.")
 		writer.WriteHeader(http.StatusInternalServerError)
 	}
-	fmt.Println(string(serializedRooms))
 	writer.Write(serializedRooms)
 }
 
@@ -96,6 +102,11 @@ func createRoom(writer http.ResponseWriter, req *http.Request) {
 	}
 	var chatRoomName string
 	json.Unmarshal(bodyBytes, &chatRoomName)
+
+	// If the room already exists, don't create a duplicate, return
+	if _, err := getRoomForName(chatRoomName); err == nil {
+		return
+	}
 	rooms = append(rooms, &model.ChatRoom{Users: nil, Name: chatRoomName, MaxUsers: maxUsers})
 }
 
@@ -122,8 +133,21 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 			writer.WriteHeader(http.StatusForbidden)
 			return
 		}
-		room.Users = append(room.Users, joinRequest.User)
+		// If the user isn't already in the room, add them to the room
+		localUserCopy := room.GetUser(joinRequest.User.UserName)
+		if localUserCopy == nil {
+			localUserCopy = joinRequest.User
+			room.Users = append(room.Users, joinRequest.User)
+		} else {
+			// Update the config to be what the user has specified
+			localUserCopy.Config = joinRequest.User.Config
+		}
+		if localUserCopy.GetRoom(room.Name) == nil {
+			localUserCopy.ChatRooms = append(localUserCopy.ChatRooms, room)
+		}
+
 		room.Mux.Unlock()
+		return
 	}
 }
 
@@ -150,10 +174,20 @@ func getRoomForName(chatRoomName string) (*model.ChatRoom, error) {
 
 func broadcastMessage(message *model.Message) {
 	client := &http.Client{}
-	// TODO broadcast to all users in the target room
+	room, err := getRoomForName(message.ChatRoomName)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	for _, user := range room.Users {
+		go sendMessageToUser(client, message, user)
+	}
+}
+
+func sendMessageToUser(client *http.Client, message *model.Message, user *model.User) {
 	// Format the message for serialization
 	messageBuffer := model.ConvertMessageToBuffer(message)
-	client.Post("http://localhost:9081/message", "application/json; charset=utf-8", messageBuffer)
+	client.Post(fmt.Sprintf("http://localhost:%d/message", user.Config.MessagePort), "application/json; charset=utf-8", messageBuffer)
 }
 
 func start() {

@@ -171,9 +171,9 @@ func (client *Client) joinChatRoom(roomName string) {
 
 	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/join", "application/json; charset=utf-8", b)
 	defer resp.Body.Close()
-	if err != nil {
+	if err != nil || resp.StatusCode != 200 {
 		// Failed to join the chat room
-		DisplayErrorDialogWithMessage(err.Error())
+		DisplayErrorDialogWithMessage("Cannot join, max users reached")
 		return
 	}
 	CreateChatTab(client, roomName)
