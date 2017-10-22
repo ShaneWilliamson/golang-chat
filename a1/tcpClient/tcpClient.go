@@ -184,6 +184,22 @@ func (client *Client) joinChatRoom(roomName string) {
 	CreateChatTab(client, roomName)
 }
 
+// UpdateUser updates the server about the user config
+func (client *Client) UpdateUser() error {
+	// Format the body for serialization
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(&client.User)
+
+	res, err := client.HTTPClient.Post("http://localhost:8081/user/update", "application/json; charset=utf-8", b)
+	// Wait for the response to complete
+	defer res.Body.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		return err
+	}
+	return nil
+}
+
 func (client *Client) subscribeToServer() {
 	fmt.Println("Starting client message subscription...")
 	http.HandleFunc("/message", client.receiveMessage)

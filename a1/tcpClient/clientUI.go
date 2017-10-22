@@ -249,6 +249,13 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 		assignUserName(client, usernameInput.Text())
 		model.GetUIInstance().TabWidget.RemoveTab(0)
 		createChatRoomSelectionTab(client)
+		// Update the server about user config info
+		err := client.UpdateUser()
+		if err != nil {
+			widgets.QMessageBox_Information(nil, "Error", "Failed to update server about client config",
+				widgets.QMessageBox__Ok, widgets.QMessageBox__Ok)
+			return
+		}
 		// Get chat rooms for user
 		rooms, err := client.getChatRoomsForUser()
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"436bin/a1/config"
 	"436bin/a1/model"
 	"encoding/json"
 )
@@ -13,7 +14,7 @@ import (
 var rooms []*model.ChatRoom
 var users []*model.User
 
-const maxUsers int = 2
+const maxUsers int = 10
 
 func receiveMessage(writer http.ResponseWriter, req *http.Request) {
 	bodyBytes, err := ioutil.ReadAll(req.Body)
@@ -135,13 +136,7 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 			return
 		}
 		// If the user isn't already in the room, add them to the room
-		// Find user
-		var user *model.User
-		for _, u := range users {
-			if u.UserName == joinRequest.User.UserName {
-				user = u
-			}
-		}
+		user := getUser(joinRequest.User.UserName)
 
 		if room.GetUser(user.UserName) == nil {
 			room.Users = append(room.Users, user)
@@ -156,7 +151,38 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func updateUser(writer http.ResponseWriter, req *http.Request) {
+	bodyBytes, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		fmt.Println("Error reading the message from the request body")
+		writer.WriteHeader(http.StatusInternalServerError)
+	}
+	var user *model.User
+	json.Unmarshal(bodyBytes, &user)
+	updateUserConfig(user.UserName, user.Config)
+}
+
 // *************
+
+func updateUserConfig(userName string, config *config.ClientConfig) {
+	user := getUser(userName)
+	if user != nil {
+		user.Config = config
+	} else {
+		users = append(users, &model.User{UserName: userName, Config: config})
+	}
+}
+
+func getUser(userName string) *model.User {
+	// Find user
+	var user *model.User
+	for _, u := range users {
+		if u.UserName == userName {
+			user = u
+		}
+	}
+	return user
+}
 
 func logMessage(m *model.Message) {
 	fmt.Printf("%s: %s\n", string(m.UserName), string(m.Body))
@@ -209,6 +235,7 @@ func Create() {
 	// Register our HTTP routes
 	http.HandleFunc("/message", receiveMessage)
 	http.HandleFunc("/log", getLog)
+	http.HandleFunc("/user/update", updateUser)
 	http.HandleFunc("/chatrooms/list", listRooms)
 	http.HandleFunc("/chatrooms/create", createRoom)
 	http.HandleFunc("/chatrooms/join", joinRoom)
