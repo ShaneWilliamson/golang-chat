@@ -170,7 +170,7 @@ func (client *Client) joinChatRoom(roomName string) {
 		}
 	}
 	// Format the body for serialization
-	joinRequest := &model.JoinChatRequest{User: client.User, RoomName: roomName}
+	joinRequest := &model.ChatRoomRequest{User: client.User, RoomName: roomName}
 	b := new(bytes.Buffer)
 	json.NewEncoder(b).Encode(&joinRequest)
 
@@ -182,6 +182,31 @@ func (client *Client) joinChatRoom(roomName string) {
 		return
 	}
 	CreateChatTab(client, roomName)
+}
+
+func (client *Client) leaveChatRoom(roomName string) {
+	// Format the body for serialization
+	joinRequest := &model.ChatRoomRequest{User: client.User, RoomName: roomName}
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(&joinRequest)
+
+	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/leave", "application/json; charset=utf-8", b)
+	defer resp.Body.Close()
+	if err != nil || resp.StatusCode != 200 {
+		// Failed to join the chat room
+		DisplayErrorDialogWithMessage("Failed to leave chat room, please try again")
+		return
+	}
+	tab, err := model.GetUIInstance().GetTabByName(roomName)
+	if err != nil {
+		DisplayErrorDialogWithMessage(err.Error())
+		return
+	}
+	if model.GetUIInstance().RemoveTab(roomName) != nil {
+		DisplayErrorDialogWithMessage("Critical error, could not remove client chat tab.")
+		os.Exit(0)
+	}
+	model.GetUIInstance().TabWidget.RemoveTab(model.GetUIInstance().TabWidget.IndexOf(tab.Tab))
 }
 
 // UpdateUser updates the server about the user config
