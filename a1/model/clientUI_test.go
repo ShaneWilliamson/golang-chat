@@ -1,7 +1,6 @@
-package tcpClient
+package model
 
 import (
-	"436bin/a1/model"
 	"fmt"
 	"testing"
 )
@@ -9,9 +8,9 @@ import (
 func TestRemoveTab(t *testing.T) {
 	tabName1 := "foo"
 	tabName2 := "bar"
-	ui := model.GetUIInstance()
-	ui.ChatTabs = append(ui.ChatTabs, &model.ClientChatTab{Name: tabName1})
-	ui.ChatTabs = append(ui.ChatTabs, &model.ClientChatTab{Name: tabName2})
+	ui := GetUIInstance()
+	ui.ChatTabs = append(ui.ChatTabs, &ClientChatTab{Name: tabName1})
+	ui.ChatTabs = append(ui.ChatTabs, &ClientChatTab{Name: tabName2})
 	// Ensure set up correctly
 	if len(ui.ChatTabs) != 2 {
 		fmt.Println("Chat tabs not set up properly")
@@ -34,7 +33,7 @@ func TestRemoveTab(t *testing.T) {
 
 func TestRemoveTabReturnsErrorIfTabDoesNotExist(t *testing.T) {
 	nonExistantTabName := "foo"
-	ui := model.GetUIInstance()
+	ui := GetUIInstance()
 	// Ensure set up correctly
 	if len(ui.ChatTabs) != 0 {
 		fmt.Println("Chat tabs not set up properly")
@@ -58,9 +57,9 @@ func TestRemoveTabReturnsErrorIfTabDoesNotExist(t *testing.T) {
 func TestGetTabByName(t *testing.T) {
 	tabName1 := "foo"
 	tabName2 := "bar"
-	expectedTab := &model.ClientChatTab{Name: tabName1}
-	tab2 := &model.ClientChatTab{Name: tabName2}
-	ui := model.GetUIInstance()
+	expectedTab := &ClientChatTab{Name: tabName1}
+	tab2 := &ClientChatTab{Name: tabName2}
+	ui := GetUIInstance()
 	ui.ChatTabs = append(ui.ChatTabs, expectedTab)
 	ui.ChatTabs = append(ui.ChatTabs, tab2)
 	// Ensure set up correctly
@@ -87,9 +86,9 @@ func TestGetTabByNameReturnsErrorIfNoTabByNameExists(t *testing.T) {
 	nonExistantTabName := "Randomname123"
 	tabName1 := "foo"
 	tabName2 := "bar"
-	tab1 := &model.ClientChatTab{Name: tabName1}
-	tab2 := &model.ClientChatTab{Name: tabName2}
-	ui := model.GetUIInstance()
+	tab1 := &ClientChatTab{Name: tabName1}
+	tab2 := &ClientChatTab{Name: tabName2}
+	ui := GetUIInstance()
 	ui.ChatTabs = append(ui.ChatTabs, tab1)
 	ui.ChatTabs = append(ui.ChatTabs, tab2)
 	// Ensure set up correctly
