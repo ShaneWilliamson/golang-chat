@@ -22,27 +22,6 @@ type Client struct {
 	Conn       *net.Conn
 }
 
-func (client *Client) readUserName() (string, error) {
-	reader := createBufioReader()
-	fmt.Print("Please enter your desired user name: ")
-	text, err := reader.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	return text, nil
-}
-
-// CreateUser constructs the user with an associated UserName
-func (client *Client) CreateUser() error {
-	text, err := client.readUserName()
-	if err != nil {
-		return err
-	}
-	text = strings.TrimSpace(text)
-	client.User.UserName = text
-	return nil
-}
-
 // CreateReader this is split out for testing purposes
 func createBufioReader() *bufio.Reader {
 	return bufio.NewReader(os.Stdin)
