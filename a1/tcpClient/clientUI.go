@@ -42,12 +42,20 @@ func scrollChatToBottom(chatTab *model.ClientChatTab) {
 func CreateChatTab(client *Client, roomName string) {
 	tab := widgets.NewQWidget(nil, 0)
 	layout := widgets.NewQVBoxLayout()
+	leaveLayout := widgets.NewQHBoxLayout()
 	logLayout := widgets.NewQVBoxLayout()
 	inputLayout := widgets.NewQHBoxLayout()
 
-	layout.InsertLayout(0, logLayout, 0)
-	layout.InsertLayout(1, inputLayout, 0)
+	layout.InsertLayout(0, leaveLayout, 0)
+	layout.InsertLayout(1, logLayout, 0)
+	layout.InsertLayout(2, inputLayout, 0)
 	tab.SetLayout(layout)
+
+	leaveButton := widgets.NewQPushButton2("Leave", nil)
+	leaveButton.ConnectClicked(func(checked bool) {
+		client.leaveChatRoom(roomName)
+	})
+	leaveLayout.InsertWidget(0, leaveButton, 0, 0)
 
 	logView := widgets.NewQTextEdit2("", nil)
 	logView.SetReadOnly(true)

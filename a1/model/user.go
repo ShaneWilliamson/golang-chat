@@ -1,6 +1,9 @@
 package model
 
-import "436bin/a1/config"
+import (
+	"436bin/a1/config"
+	"errors"
+)
 
 // User contains the username and their chatroom information
 type User struct {
@@ -17,4 +20,17 @@ func (user *User) GetRoom(roomName string) *ChatRoom {
 		}
 	}
 	return nil
+}
+
+// RemoveRoom removes the given chat room, returns an error if not found and removed
+func (user *User) RemoveRoom(roomName string) error {
+	for i, r := range user.ChatRooms {
+		if roomName == r.Name {
+			// Quick swap + remove chat room from chat rooms array
+			user.ChatRooms[len(user.ChatRooms)-1], user.ChatRooms[i] = user.ChatRooms[i], user.ChatRooms[len(user.ChatRooms)-1]
+			user.ChatRooms = user.ChatRooms[:len(user.ChatRooms)-1]
+			return nil
+		}
+	}
+	return errors.New("Could not find chat room")
 }

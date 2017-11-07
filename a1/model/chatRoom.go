@@ -1,6 +1,9 @@
 package model
 
-import "sync"
+import (
+	"errors"
+	"sync"
+)
 
 // ChatRoom defines the structure of rooms which hold users that can converse
 type ChatRoom struct {
@@ -19,4 +22,17 @@ func (room *ChatRoom) GetUser(userName string) *User {
 		}
 	}
 	return nil
+}
+
+// RemoveUser removes the given user, returns an error if not found and removed
+func (room *ChatRoom) RemoveUser(userName string) error {
+	for i, u := range room.Users {
+		if userName == u.UserName {
+			// Quick swap + remove user from users array
+			room.Users[len(room.Users)-1], room.Users[i] = room.Users[i], room.Users[len(room.Users)-1]
+			room.Users = room.Users[:len(room.Users)-1]
+			return nil
+		}
+	}
+	return errors.New("Could not find user")
 }

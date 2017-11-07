@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/therecipe/qt/widgets"
@@ -36,4 +37,27 @@ func GetUIInstance() *ClientUI {
 		instance = &ClientUI{ChatRoomManagementTab: &ChatRoomManagementTab{}}
 	})
 	return instance
+}
+
+// GetTabByName retrieves the tab by the given name, if it exists
+func (ui *ClientUI) GetTabByName(tabName string) (*ClientChatTab, error) {
+	for _, tab := range ui.ChatTabs {
+		if tab.Name == tabName {
+			return tab, nil
+		}
+	}
+	return nil, fmt.Errorf("Could not find tab named %s", tabName)
+}
+
+// RemoveTab removes the tab by the given name, if it exists
+func (ui *ClientUI) RemoveTab(tabName string) error {
+	for i, tab := range ui.ChatTabs {
+		if tab.Name == tabName {
+			// Quick swap + remove chat room from chat rooms array
+			ui.ChatTabs[len(ui.ChatTabs)-1], ui.ChatTabs[i] = ui.ChatTabs[i], ui.ChatTabs[len(ui.ChatTabs)-1]
+			ui.ChatTabs = ui.ChatTabs[:len(ui.ChatTabs)-1]
+			return nil
+		}
+	}
+	return fmt.Errorf("Could not find tab named %s", tabName)
 }

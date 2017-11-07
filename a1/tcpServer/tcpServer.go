@@ -118,7 +118,7 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 		fmt.Println("Error reading the room from the request body")
 		writer.WriteHeader(http.StatusInternalServerError)
 	}
-	var joinRequest *model.JoinChatRequest
+	var joinRequest *model.ChatRoomRequest
 	json.Unmarshal(bodyBytes, &joinRequest)
 	for _, room := range rooms {
 		if room.Name != joinRequest.RoomName {
@@ -149,6 +149,50 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 		room.Mux.Unlock()
 		return
 	}
+}
+
+func leaveRoom(writer http.ResponseWriter, req *http.Request) {
+	bodyBytes, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		fmt.Println("Error reading the room from the request body")
+		writer.WriteHeader(http.StatusInternalServerError)
+	}
+	var leaveRequest *model.ChatRoomRequest
+	json.Unmarshal(bodyBytes, &leaveRequest)
+	for _, room := range rooms {
+		if room.Name != leaveRequest.RoomName {
+			continue
+		}
+
+		// If the user is in the room, remove them from the room
+		user := getUser(leaveRequest.User.UserName)
+
+		room.Mux.Lock()
+		// Update chat room
+		if room.RemoveUser(user.UserName) != nil {
+			room.Mux.Unlock()
+			writer.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		// Update user
+		user.Config = leaveRequest.User.Config
+		if user.RemoveRoom(room.Name) != nil {
+			// Add the user back to the room, the operation failed
+			room.Users = append(room.Users, user)
+			room.Mux.Unlock()
+			writer.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		room.Mux.Unlock()
+		return
+	}
+}
+
+func removeUserFromRoom(s []int, i int) []int {
+	s[len(s)-1], s[i] = s[i], s[len(s)-1]
+	return s[:len(s)-1]
 }
 
 func updateUser(writer http.ResponseWriter, req *http.Request) {
@@ -240,7 +284,7 @@ func Create() {
 	http.HandleFunc("/chatrooms/create", createRoom)
 	http.HandleFunc("/chatrooms/join", joinRoom)
 	http.HandleFunc("/chatrooms/forUser", listRoomsForUser)
-	// http.HandleFunc("/chatrooms/leave", todo)
+	http.HandleFunc("/chatrooms/leave", leaveRoom)
 
 	start()
 }

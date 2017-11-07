@@ -1,7 +1,7 @@
 package model
 
-// JoinChatRequest defines the structure of the request for joining a chat room
-type JoinChatRequest struct {
+// ChatRoomRequest defines the structure of requests for leaving/joining a chat room
+type ChatRoomRequest struct {
 	RoomName string
 	User     *User
 }
