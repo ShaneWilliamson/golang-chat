@@ -190,11 +190,6 @@ func leaveRoom(writer http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func removeUserFromRoom(s []int, i int) []int {
-	s[len(s)-1], s[i] = s[i], s[len(s)-1]
-	return s[:len(s)-1]
-}
-
 func updateUser(writer http.ResponseWriter, req *http.Request) {
 	bodyBytes, err := ioutil.ReadAll(req.Body)
 	if err != nil {
