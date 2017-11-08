@@ -23,10 +23,3 @@ A client and server implementation which relies on HTTP for communication.
     * `./deploy/linux/a1.sh`
     * Select the client option (2)
     * **Note** every client must have a unique, free port they listen on, select unique ports
-
-##### Messages
-
-* Send message log for chosen chat room upon connection by client
-* Receive message from user, and store into log
-* Broadcast new messages received out to all connections to said room
-
