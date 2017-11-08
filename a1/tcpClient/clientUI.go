@@ -197,7 +197,7 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 
 	// Create main window
 	window := widgets.NewQMainWindow(nil, 0)
-	window.SetWindowTitle("Hello World Example")
+	window.SetWindowTitle("Golang QT Chat Client")
 	window.SetMinimumSize2(200, 200)
 
 	//********************************
