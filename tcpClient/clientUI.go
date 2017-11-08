@@ -1,13 +1,12 @@
 package tcpClient
 
 import (
-	"436bin/a1/config"
-	"436bin/a1/model"
-
 	"fmt"
 	"os"
 	"strconv"
 
+	"github.com/ShaneWilliamson/golang-chat/config"
+	"github.com/ShaneWilliamson/golang-chat/model"
 	"github.com/therecipe/qt/gui"
 	"github.com/therecipe/qt/widgets"
 )

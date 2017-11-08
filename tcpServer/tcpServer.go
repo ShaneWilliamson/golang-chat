@@ -6,9 +6,10 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"436bin/a1/config"
-	"436bin/a1/model"
 	"encoding/json"
+
+	"github.com/ShaneWilliamson/golang-chat/config"
+	"github.com/ShaneWilliamson/golang-chat/model"
 )
 
 var rooms []*model.ChatRoom

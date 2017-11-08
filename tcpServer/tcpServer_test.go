@@ -1,10 +1,11 @@
 package tcpServer
 
 import (
-	"436bin/a1/config"
-	"436bin/a1/model"
 	"fmt"
 	"testing"
+
+	"github.com/ShaneWilliamson/golang-chat/config"
+	"github.com/ShaneWilliamson/golang-chat/model"
 )
 
 func TestUpdateUserConfigCorrectlyUpdatesConfig(t *testing.T) {

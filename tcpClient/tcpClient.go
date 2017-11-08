@@ -1,12 +1,13 @@
 package tcpClient
 
 import (
-	"436bin/a1/config"
-	"436bin/a1/model"
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/ShaneWilliamson/golang-chat/config"
+	"github.com/ShaneWilliamson/golang-chat/model"
 
 	"bufio"
 	"fmt"

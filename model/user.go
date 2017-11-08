@@ -1,8 +1,9 @@
 package model
 
 import (
-	"436bin/a1/config"
 	"errors"
+
+	"github.com/ShaneWilliamson/golang-chat/config"
 )
 
 // User contains the username and their chatroom information

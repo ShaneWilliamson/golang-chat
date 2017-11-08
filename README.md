@@ -16,10 +16,10 @@ A client and server implementation which relies on HTTP for communication.
 1. Clone the repo and build the project using qt's toolset
     * `qtdeploy -docker build linux` (This assumes you're using the docker installation for qt)
 2. Launch the server
-    * `./deploy/linux/a1.sh`
+    * `./deploy/linux/golang-chat.sh`
     * Select the server option (1)
     * The server utilizes port `8081`, make sure this is free
 3. Launch the client(s)
-    * `./deploy/linux/a1.sh`
+    * `./deploy/linux/golang-chat.sh`
     * Select the client option (2)
     * **Note** every client must have a unique, free port they listen on, select unique ports

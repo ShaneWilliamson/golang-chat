@@ -1,12 +1,13 @@
 package main
 
 import (
-	"436bin/a1/tcpClient"
-	"436bin/a1/tcpServer"
 	"bufio"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/ShaneWilliamson/golang-chat/tcpClient"
+	"github.com/ShaneWilliamson/golang-chat/tcpServer"
 )
 
 func main() {
