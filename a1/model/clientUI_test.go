@@ -9,8 +9,10 @@ func TestRemoveTab(t *testing.T) {
 	tabName1 := "foo"
 	tabName2 := "bar"
 	ui := GetUIInstance()
-	ui.ChatTabs = append(ui.ChatTabs, &ClientChatTab{Name: tabName1})
-	ui.ChatTabs = append(ui.ChatTabs, &ClientChatTab{Name: tabName2})
+	ui.ChatTabs = []*ClientChatTab{
+		&ClientChatTab{Name: tabName1},
+		&ClientChatTab{Name: tabName2},
+	}
 	// Ensure set up correctly
 	if len(ui.ChatTabs) != 2 {
 		fmt.Println("Chat tabs not set up properly")
@@ -34,6 +36,7 @@ func TestRemoveTab(t *testing.T) {
 func TestRemoveTabReturnsErrorIfTabDoesNotExist(t *testing.T) {
 	nonExistantTabName := "foo"
 	ui := GetUIInstance()
+	ui.ChatTabs = []*ClientChatTab{}
 	// Ensure set up correctly
 	if len(ui.ChatTabs) != 0 {
 		fmt.Println("Chat tabs not set up properly")
@@ -60,8 +63,10 @@ func TestGetTabByName(t *testing.T) {
 	expectedTab := &ClientChatTab{Name: tabName1}
 	tab2 := &ClientChatTab{Name: tabName2}
 	ui := GetUIInstance()
-	ui.ChatTabs = append(ui.ChatTabs, expectedTab)
-	ui.ChatTabs = append(ui.ChatTabs, tab2)
+	ui.ChatTabs = []*ClientChatTab{
+		expectedTab,
+		tab2,
+	}
 	// Ensure set up correctly
 	if len(ui.ChatTabs) != 2 {
 		fmt.Println("Chat tabs not set up properly")
@@ -89,8 +94,10 @@ func TestGetTabByNameReturnsErrorIfNoTabByNameExists(t *testing.T) {
 	tab1 := &ClientChatTab{Name: tabName1}
 	tab2 := &ClientChatTab{Name: tabName2}
 	ui := GetUIInstance()
-	ui.ChatTabs = append(ui.ChatTabs, tab1)
-	ui.ChatTabs = append(ui.ChatTabs, tab2)
+	ui.ChatTabs = []*ClientChatTab{
+		tab1,
+		tab2,
+	}
 	// Ensure set up correctly
 	if len(ui.ChatTabs) != 2 {
 		fmt.Println("Chat tabs not set up properly")
