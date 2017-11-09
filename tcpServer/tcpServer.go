@@ -1,10 +1,12 @@
 package tcpServer
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"encoding/json"
 
@@ -14,6 +16,8 @@ import (
 
 var rooms []*model.ChatRoom
 var users []*model.User
+var channelUsed chan *model.ChatRoom
+var isSleeping bool
 
 const maxUsers int = 10
 
@@ -110,7 +114,10 @@ func createRoom(writer http.ResponseWriter, req *http.Request) {
 	if _, err := getRoomForName(chatRoomName); err == nil {
 		return
 	}
-	rooms = append(rooms, &model.ChatRoom{Users: nil, Name: chatRoomName, MaxUsers: maxUsers})
+	pq := model.GetPriorityQueueInstance()
+	chatRoom := &model.ChatRoom{Users: nil, Name: chatRoomName, MaxUsers: maxUsers, LastUsed: time.Now()}
+	heap.Push(pq, chatRoom)
+	rooms = append(rooms, chatRoom)
 }
 
 func joinRoom(writer http.ResponseWriter, req *http.Request) {
@@ -232,6 +239,10 @@ func logMessage(m *model.Message) {
 		return
 	}
 	room.Log = append(room.Log, m)
+	// Update the room's LastUsed date, and it's order in the priority queue of destruction
+	room.LastUsed = time.Now()
+	pq := model.GetPriorityQueueInstance()
+	pq.Update(room, room.LastUsed)
 }
 
 func getRoomForName(chatRoomName string) (*model.ChatRoom, error) {
@@ -262,9 +273,28 @@ func sendMessageToUser(client *http.Client, message *model.Message, user *model.
 }
 
 func start() {
+	// Handle chat room destruction when not used after specified duration
+	go handleChatRoomDestruction()
+
 	fmt.Println("Starting server...")
 	// Create the HTTP server
 	fmt.Println((http.ListenAndServe(":8081", nil).Error()))
+}
+
+func handleChatRoomDestruction() {
+	isSleeping = false
+	channelUsed = make(chan *model.ChatRoom)
+	for {
+		_, ok := <-channelUsed
+		// TODO: Check psuedocode, implement sleep stuff // baseTime.Add(time.Hour * time.Duration(7*24))
+		if ok { // if it's closed we leave
+			return
+		}
+	}
+}
+
+func sleepTilDestruction() {
+
 }
 
 // Create makes a new tcp server and listens for incoming requests

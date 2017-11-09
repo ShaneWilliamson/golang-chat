@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"sync"
+	"time"
 )
 
 // ChatRoom defines the structure of rooms which hold users that can converse
@@ -12,6 +13,8 @@ type ChatRoom struct {
 	MaxUsers int
 	Mux      sync.Mutex
 	Log      []*Message
+	LastUsed time.Time
+	Index    int
 }
 
 // GetUser returns the user if found, nil otherwise
