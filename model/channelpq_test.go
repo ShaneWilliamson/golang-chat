@@ -67,8 +67,11 @@ func TestPriorityQueueOrdersByLastUsedCorrectlyAfterUpdate(t *testing.T) {
 }
 
 func TestDurationManipulation(t *testing.T) {
+	expectedTime := "2017-11-15 23:00:00 +0000 UTC"
 	baseTime, _ := time.Parse(time.RFC3339, "2017-11-08T23:00:00Z")
 	sleepUntil := baseTime.Add(time.Hour * time.Duration(7*24))
-	fmt.Println(sleepUntil.Sub(baseTime))
-	t.Fail()
+	if sleepUntil.String() != expectedTime {
+		fmt.Printf("sleepUntil time incorrect.\nExpected: %s\nActual: %s\n", expectedTime, sleepUntil.String())
+		t.Fail()
+	}
 }

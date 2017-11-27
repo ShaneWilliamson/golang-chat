@@ -6,14 +6,6 @@ import (
 	"time"
 )
 
-// An Item is something we manage in a priority queue.
-// type Item struct {
-// 	value    string // The value of the item; arbitrary.
-// 	priority int    // The priority of the item in the queue.
-// 	// The Index is needed by update and is maintained by the heap.Interface methods.
-// 	Index int // The Index of the item in the heap.
-// }
-
 // A PriorityQueue implements heap.Interface and holds ChatRooms.
 type PriorityQueue []*ChatRoom
 
