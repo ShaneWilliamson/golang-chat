@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -301,10 +303,34 @@ func sendMessageToUser(client *http.Client, message *model.Message, user *model.
 	client.Post(fmt.Sprintf("http://localhost:%d/message", user.Config.MessagePort), "application/json; charset=utf-8", messageBuffer)
 }
 
-func start() {
+func start(link net.Listener) {
 	fmt.Println("Starting server...")
-	// Create the HTTP server
-	fmt.Println((http.ListenAndServe(":8081", nil).Error()))
+	// Listen for new client tcp socket connections
+	for {
+		acceptNewClientConnection(link)
+		go openConnectionWithClient(&clientConn)
+	}
+}
+
+func acceptNewClientConnection(link net.Listener) {
+	// Wait for the next call, and returns a generic connection
+	c, err := link.Accept()
+	if err != nil {
+		// Creation of new connection failed
+		fmt.Println("Failed to accept a new connection. Exiting.")
+		os.Exit(3)
+	}
+	dec := json.NewDecoder(c)
+	var user model.User
+	err := dec.Decode(&user)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(2)
+	}
+}
+
+func openConnectionWithClient(c *net.Conn) {
+
 }
 
 // HandleChatRoomDestruction launches a routine to destroy the next available chat room, returns if no rooms exist
@@ -406,14 +432,20 @@ func Create() {
 	fmt.Println("Creating Server...")
 
 	// Register our HTTP routes
-	http.HandleFunc("/message", receiveMessage)
-	http.HandleFunc("/log", getLog)
-	http.HandleFunc("/user/update", updateUser)
-	http.HandleFunc("/chatrooms/list", listRooms)
-	http.HandleFunc("/chatrooms/create", createRoom)
-	http.HandleFunc("/chatrooms/join", joinRoom)
-	http.HandleFunc("/chatrooms/forUser", listRoomsForUser)
-	http.HandleFunc("/chatrooms/leave", leaveRoom)
+	// http.HandleFunc("/message", receiveMessage)
+	// http.HandleFunc("/log", getLog)
+	// http.HandleFunc("/user/update", updateUser)
+	// http.HandleFunc("/chatrooms/list", listRooms)
+	// http.HandleFunc("/chatrooms/create", createRoom)
+	// http.HandleFunc("/chatrooms/join", joinRoom)
+	// http.HandleFunc("/chatrooms/forUser", listRoomsForUser)
+	// http.HandleFunc("/chatrooms/leave", leaveRoom)
 
-	start()
+	link, err := net.Listen("tcp", ":8081")
+	if err != nil {
+		fmt.Println("Error attempting to listen on port 8081. Exiting.")
+		os.Exit(1)
+	}
+
+	start(link)
 }

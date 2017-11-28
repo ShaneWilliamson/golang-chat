@@ -279,11 +279,12 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 		}
 		assignUserName(client, usernameInput.Text())
 		// Update the server about user config info
+		client.ConnectToServer()
 		err := client.UpdateUser()
 		if err != nil {
 			widgets.QMessageBox_Information(nil, "Error", "Failed to update server about client config",
 				widgets.QMessageBox__Ok, widgets.QMessageBox__Ok)
-			// Can't really recover from this point. Major server error. TODO: Gracefully retry
+			// Can't really recover from this point. Major server error.
 			os.Exit(2)
 		}
 		ReloadUI(client)

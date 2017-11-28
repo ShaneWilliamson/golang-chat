@@ -189,15 +189,12 @@ func (client *Client) leaveChatRoom(roomName string) {
 	model.GetUIInstance().TabWidget.RemoveTab(model.GetUIInstance().TabWidget.IndexOf(tab.Tab))
 }
 
-// UpdateUser updates the server about the user config
+// UpdateUser creates/updates the user on the server
 func (client *Client) UpdateUser() error {
-	// Format the body for serialization
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&client.User)
-
-	res, err := client.HTTPClient.Post("http://localhost:8081/user/update", "application/json; charset=utf-8", b)
-	// Wait for the response to complete
-	defer res.Body.Close()
+	// Format the message for serialization
+	// Use gob lib to encode the data
+	enc := json.NewEncoder(*client.Conn) // to write
+	err := enc.Encode(&client.User)
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
@@ -224,13 +221,27 @@ func (client *Client) subscribeToServer() {
 	fmt.Println((http.ListenAndServe(fmt.Sprintf(":%d", config.GetInstance().ClientConfig.MessagePort), nil).Error()))
 }
 
+// ConnectToServer establishes an initial connection with the server, gives user info, and prompts for the user to establish further connection
+func (client *Client) ConnectToServer() {
+	// Dial the server, TODO: Move this to after we specify our port, so that the server dials us
+	c, err := net.Dial("tcp", "localhost:8081")
+	if err != nil {
+		fmt.Println(err.Error())
+		fmt.Println("Client dialing failed. Exiting.")
+		os.Exit(1)
+	}
+	client.Conn = &c
+}
+
 // Create makes a new tcp client and waits to send a message to the target server.
 func Create() {
 	fmt.Println("Creating client...")
+
 	// Create the client
 	client := &Client{
 		HTTPClient: &http.Client{},
 		User:       &model.User{},
+		Conn:       &c,
 	}
 
 	// And now we create the GUI
