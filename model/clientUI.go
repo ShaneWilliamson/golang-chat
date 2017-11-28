@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/therecipe/qt/core"
 	"github.com/therecipe/qt/widgets"
 )
 
@@ -23,9 +24,16 @@ type ChatRoomManagementTab struct {
 
 // ClientUI keeps track of all tabs the client has
 type ClientUI struct {
+	ClientQTInstance      *ClientQT
 	ChatRoomManagementTab *ChatRoomManagementTab
 	ChatTabs              []*ClientChatTab
 	TabWidget             *widgets.QTabWidget
+}
+
+// ClientQT allows us to interact with QT's GUI outside the GUI thread
+type ClientQT struct {
+	core.QObject
+	_ func() `signal:"reloadUI"`
 }
 
 var instance *ClientUI

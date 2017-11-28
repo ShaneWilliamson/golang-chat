@@ -49,7 +49,7 @@ func (pq *PriorityQueue) Update(item *ChatRoom, lastUsed time.Time) {
 var pqinstance *PriorityQueue
 var pqonce sync.Once
 
-// GetPriorityQueueInstance returns a singleton instance of the program configuration
+// GetPriorityQueueInstance returns a singleton instance of the priority queue
 func GetPriorityQueueInstance() *PriorityQueue {
 	pqonce.Do(func() {
 		pqinstance = &PriorityQueue{}
