@@ -14,6 +14,7 @@ import (
 
 	"github.com/ShaneWilliamson/golang-chat/config"
 	"github.com/ShaneWilliamson/golang-chat/model"
+	"github.com/gorilla/mux"
 )
 
 const sleepDays int = 7
@@ -62,14 +63,8 @@ func receiveMessage(writer http.ResponseWriter, req *http.Request) {
 }
 
 func getLog(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the room name from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var chatRoomName string
-	json.Unmarshal(bodyBytes, &chatRoomName)
-	room, err := getRoomForName(chatRoomName)
+	roomName := mux.Vars(req)["roomName"]
+	room, err := getRoomForName(roomName)
 	if err != nil {
 		fmt.Println(err.Error())
 		writer.WriteHeader(http.StatusNotFound)
@@ -94,14 +89,7 @@ func listRooms(writer http.ResponseWriter, req *http.Request) {
 }
 
 func listRoomsForUser(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the user from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var userName string
-	json.Unmarshal(bodyBytes, &userName)
-
+	userName := mux.Vars(req)["userName"]
 	var roomsForUser []*model.ChatRoom
 	found := false
 	server := GetServerInstance()
@@ -150,11 +138,12 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 		fmt.Println("Error reading the room from the request body")
 		writer.WriteHeader(http.StatusInternalServerError)
 	}
-	var joinRequest *model.ChatRoomRequest
-	json.Unmarshal(bodyBytes, &joinRequest)
+	roomName := mux.Vars(req)["roomName"]
+	var ru *model.User
+	json.Unmarshal(bodyBytes, &ru)
 	server := GetServerInstance()
 	for _, room := range server.Rooms {
-		if room.Name != joinRequest.RoomName {
+		if room.Name != roomName {
 			continue
 		}
 		// Check, lock, check
@@ -169,12 +158,12 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 			return
 		}
 		// If the user isn't already in the room, add them to the room
-		user := getUser(joinRequest.User.UserName)
+		user := getUser(ru.UserName)
 
 		if room.GetUser(user.UserName) == nil {
 			room.Users = append(room.Users, user)
 		}
-		user.Config = joinRequest.User.Config
+		user.Config = ru.Config
 		if user.GetRoom(room.Name) == nil {
 			user.ChatRooms = append(user.ChatRooms, room)
 		}
@@ -190,16 +179,17 @@ func leaveRoom(writer http.ResponseWriter, req *http.Request) {
 		fmt.Println("Error reading the room from the request body")
 		writer.WriteHeader(http.StatusInternalServerError)
 	}
-	var leaveRequest *model.ChatRoomRequest
-	json.Unmarshal(bodyBytes, &leaveRequest)
+	roomName := mux.Vars(req)["roomName"]
+	var ru *model.User
+	json.Unmarshal(bodyBytes, &ru)
 	server := GetServerInstance()
 	for _, room := range server.Rooms {
-		if room.Name != leaveRequest.RoomName {
+		if room.Name != roomName {
 			continue
 		}
 
 		// If the user is in the room, remove them from the room
-		user := getUser(leaveRequest.User.UserName)
+		user := getUser(ru.UserName)
 
 		room.Mux.Lock()
 		// Update chat room
@@ -210,7 +200,7 @@ func leaveRoom(writer http.ResponseWriter, req *http.Request) {
 		}
 
 		// Update user
-		user.Config = leaveRequest.User.Config
+		user.Config = ru.Config
 		if user.RemoveRoom(room.Name) != nil {
 			// Add the user back to the room, the operation failed
 			room.Users = append(room.Users, user)
@@ -385,7 +375,7 @@ func updateClient(user *model.User) {
 	client := &http.Client{}
 	b := new(bytes.Buffer)
 	json.NewEncoder(b).Encode(&user)
-	client.Post(fmt.Sprintf("http://localhost:%d/update", user.Config.MessagePort), "application/json; charset=utf-8", b)
+	client.Post(fmt.Sprintf("http://localhost:%d/user", user.Config.MessagePort), "application/json; charset=utf-8", b)
 }
 
 // RemoveChatRoomFromRooms removes the desired room from the server's array of rooms
@@ -406,14 +396,16 @@ func Create() {
 	fmt.Println("Creating Server...")
 
 	// Register our HTTP routes
-	http.HandleFunc("/message", receiveMessage)
-	http.HandleFunc("/log", getLog)
-	http.HandleFunc("/user/update", updateUser)
-	http.HandleFunc("/chatrooms/list", listRooms)
-	http.HandleFunc("/chatrooms/create", createRoom)
-	http.HandleFunc("/chatrooms/join", joinRoom)
-	http.HandleFunc("/chatrooms/forUser", listRoomsForUser)
-	http.HandleFunc("/chatrooms/leave", leaveRoom)
+	rtr := mux.NewRouter()
+	rtr.HandleFunc("/message", receiveMessage).Methods("POST")
+	rtr.HandleFunc("/log/{roomName}", getLog).Methods("GET")
+	rtr.HandleFunc("/users", updateUser).Methods("POST")
+	rtr.HandleFunc("/chatrooms", createRoom).Methods("POST")
+	rtr.HandleFunc("/chatrooms/list", listRooms).Methods("GET")
+	rtr.HandleFunc("/chatrooms/list/{userName}", listRoomsForUser).Methods("GET")
+	rtr.HandleFunc("/chatrooms/{roomName}/join", joinRoom).Methods("POST")
+	rtr.HandleFunc("/chatrooms/{roomName}/leave", leaveRoom).Methods("POST")
+	http.Handle("/", rtr)
 
 	start()
 }

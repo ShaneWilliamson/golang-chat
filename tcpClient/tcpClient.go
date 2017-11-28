@@ -80,11 +80,8 @@ func readMessageFromUser(client *Client) (string, error) {
 }
 
 func (client *Client) getServerLog(roomName string) ([]*model.Message, error) {
-
 	// Format the message for serialization
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&roomName)
-	res, err := client.HTTPClient.Post("http://localhost:8081/log", "application/json; charset=utf-8", b)
+	res, err := client.HTTPClient.Get(fmt.Sprintf("http://localhost:8081/log/%s", roomName))
 	// Wait for the response to complete
 	defer res.Body.Close()
 	if err != nil {
@@ -112,11 +109,7 @@ func (client *Client) getChatRooms() ([]*model.ChatRoom, error) {
 }
 
 func (client *Client) getChatRoomsForUser() ([]*model.ChatRoom, error) {
-	// Format the body for serialization
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&client.User.UserName)
-
-	res, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/forUser", "application/json; charset=utf-8", b)
+	res, err := client.HTTPClient.Get(fmt.Sprintf("http://localhost:8081/chatrooms/list/%s", client.User.UserName))
 	// Wait for the response to complete
 	defer res.Body.Close()
 	if err != nil {
@@ -134,7 +127,7 @@ func (client *Client) createChatRoom(roomName string) {
 	b := new(bytes.Buffer)
 	json.NewEncoder(b).Encode(&roomName)
 
-	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/create", "application/json; charset=utf-8", b)
+	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms", "application/json; charset=utf-8", b)
 	defer resp.Body.Close()
 	if err != nil {
 		fmt.Println(err.Error())
@@ -149,12 +142,10 @@ func (client *Client) joinChatRoom(roomName string) {
 			return
 		}
 	}
-	// Format the body for serialization
-	joinRequest := &model.ChatRoomRequest{User: client.User, RoomName: roomName}
 	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&joinRequest)
+	json.NewEncoder(b).Encode(&client.User)
 
-	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/join", "application/json; charset=utf-8", b)
+	resp, err := client.HTTPClient.Post(fmt.Sprintf("http://localhost:8081/chatrooms/%s/join", roomName), "application/json; charset=utf-8", b)
 	defer resp.Body.Close()
 	if err != nil || resp.StatusCode != 200 {
 		// Failed to join the chat room
@@ -166,11 +157,10 @@ func (client *Client) joinChatRoom(roomName string) {
 
 func (client *Client) leaveChatRoom(roomName string) {
 	// Format the body for serialization
-	joinRequest := &model.ChatRoomRequest{User: client.User, RoomName: roomName}
 	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&joinRequest)
+	json.NewEncoder(b).Encode(&client.User)
 
-	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/leave", "application/json; charset=utf-8", b)
+	resp, err := client.HTTPClient.Post(fmt.Sprintf("http://localhost:8081/chatrooms/%s/leave", roomName), "application/json; charset=utf-8", b)
 	defer resp.Body.Close()
 	if err != nil || resp.StatusCode != 200 {
 		// Failed to join the chat room
@@ -195,7 +185,7 @@ func (client *Client) UpdateUser() error {
 	b := new(bytes.Buffer)
 	json.NewEncoder(b).Encode(&client.User)
 
-	res, err := client.HTTPClient.Post("http://localhost:8081/user/update", "application/json; charset=utf-8", b)
+	res, err := client.HTTPClient.Post("http://localhost:8081/users", "application/json; charset=utf-8", b)
 	// Wait for the response to complete
 	defer res.Body.Close()
 	if err != nil {
@@ -220,7 +210,7 @@ func (client *Client) receiveUserUpdate(writer http.ResponseWriter, req *http.Re
 func (client *Client) subscribeToServer() {
 	fmt.Println("Starting client message subscription...")
 	http.HandleFunc("/message", client.receiveMessage)
-	http.HandleFunc("/update", client.receiveUserUpdate)
+	http.HandleFunc("/user", client.receiveUserUpdate)
 	fmt.Println((http.ListenAndServe(fmt.Sprintf(":%d", config.GetInstance().ClientConfig.MessagePort), nil).Error()))
 }
 

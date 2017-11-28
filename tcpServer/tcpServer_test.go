@@ -3,7 +3,6 @@ package tcpServer
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/ShaneWilliamson/golang-chat/config"
 	"github.com/ShaneWilliamson/golang-chat/model"
@@ -96,16 +95,4 @@ func TestRemoveRoomFromServerReturnsAnErrorWhenRoomDoesNotExist(t *testing.T) {
 		fmt.Printf("Rooms remaining in the server were not as expected. Index 0: %s, Index 1: %s\n", server.Rooms[0].Name, server.Rooms[1].Name)
 		t.Fail()
 	}
-}
-
-func TestTimes(t *testing.T) {
-	end := time.Now().UTC()
-	start := time.Now().UTC()
-	end = end.Add(time.Second * time.Duration(20))
-	fmt.Println(end.String())
-	fmt.Println(start.String())
-	fmt.Println(end.After(start))
-	// Okay, I'm not insane
-	fmt.Println(start.After(end))
-	t.Fail()
 }
