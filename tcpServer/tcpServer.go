@@ -1,10 +1,14 @@
 package tcpServer
 
 import (
+	"bytes"
+	"container/heap"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"sync"
+	"time"
 
 	"encoding/json"
 
@@ -12,10 +16,29 @@ import (
 	"github.com/ShaneWilliamson/golang-chat/model"
 )
 
-var rooms []*model.ChatRoom
-var users []*model.User
-
+const sleepDays int = 7
 const maxUsers int = 10
+
+// Server is a singleton of the server
+type Server struct {
+	RoomDestructionMux sync.Mutex
+	IsDestroying       bool
+	Rooms              []*model.ChatRoom
+	Users              []*model.User
+}
+
+var serverinstance *Server
+var serveronce sync.Once
+
+// GetServerInstance returns a singleton instance of the server
+func GetServerInstance() *Server {
+	serveronce.Do(func() {
+		serverinstance = &Server{IsDestroying: false}
+	})
+	return serverinstance
+}
+
+// ***********************************
 
 func receiveMessage(writer http.ResponseWriter, req *http.Request) {
 	bodyBytes, err := ioutil.ReadAll(req.Body)
@@ -35,6 +58,7 @@ func receiveMessage(writer http.ResponseWriter, req *http.Request) {
 		go logMessage(message)
 		go broadcastMessage(message)
 	}
+	go HandleChatRoomDestruction()
 }
 
 func getLog(writer http.ResponseWriter, req *http.Request) {
@@ -60,7 +84,8 @@ func getLog(writer http.ResponseWriter, req *http.Request) {
 }
 
 func listRooms(writer http.ResponseWriter, req *http.Request) {
-	serializedRooms, err := json.Marshal(&rooms)
+	server := GetServerInstance()
+	serializedRooms, err := json.Marshal(&server.Rooms)
 	if err != nil {
 		fmt.Println("Marshalling the rooms has failed.")
 		writer.WriteHeader(http.StatusInternalServerError)
@@ -79,7 +104,8 @@ func listRoomsForUser(writer http.ResponseWriter, req *http.Request) {
 
 	var roomsForUser []*model.ChatRoom
 	found := false
-	for _, user := range users {
+	server := GetServerInstance()
+	for _, user := range server.Users {
 		if user.UserName == userName {
 			found = true
 			roomsForUser = user.ChatRooms
@@ -87,7 +113,7 @@ func listRoomsForUser(writer http.ResponseWriter, req *http.Request) {
 	}
 	// if user not found, add the user
 	if !found {
-		users = append(users, &model.User{UserName: userName})
+		server.Users = append(server.Users, &model.User{UserName: userName})
 	}
 	serializedRooms, err := json.Marshal(&roomsForUser)
 	if err != nil {
@@ -110,7 +136,12 @@ func createRoom(writer http.ResponseWriter, req *http.Request) {
 	if _, err := getRoomForName(chatRoomName); err == nil {
 		return
 	}
-	rooms = append(rooms, &model.ChatRoom{Users: nil, Name: chatRoomName, MaxUsers: maxUsers})
+	pq := model.GetPriorityQueueInstance()
+	chatRoom := &model.ChatRoom{Users: nil, Name: chatRoomName, MaxUsers: maxUsers, LastUsed: time.Now().UTC()}
+	heap.Push(pq, chatRoom)
+	server := GetServerInstance()
+	server.Rooms = append(server.Rooms, chatRoom)
+	go HandleChatRoomDestruction()
 }
 
 func joinRoom(writer http.ResponseWriter, req *http.Request) {
@@ -121,7 +152,8 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 	}
 	var joinRequest *model.ChatRoomRequest
 	json.Unmarshal(bodyBytes, &joinRequest)
-	for _, room := range rooms {
+	server := GetServerInstance()
+	for _, room := range server.Rooms {
 		if room.Name != joinRequest.RoomName {
 			continue
 		}
@@ -160,7 +192,8 @@ func leaveRoom(writer http.ResponseWriter, req *http.Request) {
 	}
 	var leaveRequest *model.ChatRoomRequest
 	json.Unmarshal(bodyBytes, &leaveRequest)
-	for _, room := range rooms {
+	server := GetServerInstance()
+	for _, room := range server.Rooms {
 		if room.Name != leaveRequest.RoomName {
 			continue
 		}
@@ -202,21 +235,23 @@ func updateUser(writer http.ResponseWriter, req *http.Request) {
 	updateUserConfig(user.UserName, user.Config)
 }
 
-// *************
+// ***********************************
 
 func updateUserConfig(userName string, config *config.ClientConfig) {
 	user := getUser(userName)
 	if user != nil {
 		user.Config = config
 	} else {
-		users = append(users, &model.User{UserName: userName, Config: config})
+		server := GetServerInstance()
+		server.Users = append(server.Users, &model.User{UserName: userName, Config: config})
 	}
 }
 
 func getUser(userName string) *model.User {
 	// Find user
 	var user *model.User
-	for _, u := range users {
+	server := GetServerInstance()
+	for _, u := range server.Users {
 		if u.UserName == userName {
 			user = u
 		}
@@ -232,10 +267,15 @@ func logMessage(m *model.Message) {
 		return
 	}
 	room.Log = append(room.Log, m)
+	// Update the room's LastUsed date, and it's order in the priority queue of destruction
+	room.LastUsed = time.Now().UTC()
+	pq := model.GetPriorityQueueInstance()
+	pq.Update(room, room.LastUsed)
 }
 
 func getRoomForName(chatRoomName string) (*model.ChatRoom, error) {
-	for _, room := range rooms {
+	server := GetServerInstance()
+	for _, room := range server.Rooms {
 		if room.Name == chatRoomName {
 			return room, nil
 		}
@@ -265,6 +305,99 @@ func start() {
 	fmt.Println("Starting server...")
 	// Create the HTTP server
 	fmt.Println((http.ListenAndServe(":8081", nil).Error()))
+}
+
+// HandleChatRoomDestruction launches a routine to destroy the next available chat room, returns if no rooms exist
+func HandleChatRoomDestruction() {
+	server := GetServerInstance()
+	// If the server is already running a destruction sequence, return
+	// Check, lock, check
+	if server.IsDestroying {
+		return
+	}
+	server.RoomDestructionMux.Lock()
+	if server.IsDestroying {
+		server.RoomDestructionMux.Unlock()
+		return
+	}
+	server.IsDestroying = true
+	// Get the priority queue of rooms to be destroyed
+	pq := model.GetPriorityQueueInstance()
+	for {
+		// Get the last used room, sleep until its destruction
+		if pq.Len() <= 0 { // Make sure there exists rooms
+			server.IsDestroying = false
+			server.RoomDestructionMux.Unlock()
+			return
+		}
+		room := heap.Pop(pq).(*model.ChatRoom)
+		// To ensure that the current target room is still the target after sleeping, add it back to the queue
+		heap.Push(pq, room)
+		sleepUntilTime := getSleepUntilTime(room)
+		sleepDuration := getSleepDuration(sleepUntilTime)
+		sleepUntil(sleepDuration)
+		// Ensure that the initial target room is still our target room (It hasn't been used since sleeping)
+		if pq.Len() <= 0 {
+			// Somehow the queue has been emptied since we started sleeping, exit
+			server.IsDestroying = false
+			server.RoomDestructionMux.Unlock()
+			return
+		}
+		currentTargetRoom := heap.Pop(pq).(*model.ChatRoom)
+		sleepUntilTime = getSleepUntilTime(room)
+		// If the time to which we want to sleep is after the current time (It has not yet passed) then continue
+		if room.Name != currentTargetRoom.Name || sleepUntilTime.After(time.Now().UTC()) {
+			// The room has been used since, we must sleep to the next target date
+			heap.Push(pq, currentTargetRoom)
+			continue
+		}
+		// Otherwise, if the time to which we want to sleep is before the current time, destroy the room
+		destroyInactiveRoom(room)
+	}
+}
+
+func sleepUntil(duration time.Duration) {
+	time.Sleep(duration)
+}
+
+func getSleepUntilTime(room *model.ChatRoom) time.Time {
+	// Calculate the duration to which we sleep
+	return room.LastUsed.Add(time.Hour * time.Duration(sleepDays*24))
+}
+
+func getSleepDuration(sleepUntil time.Time) time.Duration {
+	// Now, from the target date, calculate the duration from now.
+	return sleepUntil.Sub(time.Now().UTC())
+}
+
+func destroyInactiveRoom(room *model.ChatRoom) {
+	fmt.Printf("Destroying room %s", room.Name)
+	// For every user in the room, remove the chat room from their array of rooms
+	for _, user := range room.Users {
+		user.RemoveRoom(room.Name)
+		updateClient(user)
+	}
+	server := GetServerInstance()
+	server.RemoveChatRoomFromRooms(room)
+}
+
+func updateClient(user *model.User) {
+	client := &http.Client{}
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(&user)
+	client.Post(fmt.Sprintf("http://localhost:%d/update", user.Config.MessagePort), "application/json; charset=utf-8", b)
+}
+
+// RemoveChatRoomFromRooms removes the desired room from the server's array of rooms
+func (server *Server) RemoveChatRoomFromRooms(room *model.ChatRoom) error {
+	for i, r := range server.Rooms {
+		if r.Name == room.Name {
+			server.Rooms[len(server.Rooms)-1], server.Rooms[i] = server.Rooms[i], server.Rooms[len(server.Rooms)-1]
+			server.Rooms = server.Rooms[:len(server.Rooms)-1]
+			return nil
+		}
+	}
+	return fmt.Errorf("Could not find room by the name %s", room.Name)
 }
 
 // Create makes a new tcp server and listens for incoming requests

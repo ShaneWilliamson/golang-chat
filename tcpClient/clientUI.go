@@ -186,10 +186,34 @@ func getChatRoomCreateLayout(client *Client) *widgets.QHBoxLayout {
 	return layout
 }
 
+// ReloadUI clears all tabs from the client, it then reloads all the relevant tabs for the client. (Config + rooms)
+func ReloadUI(client *Client) {
+	// Remove all tabs from the tag widget
+	model.GetUIInstance().TabWidget.Clear()
+	createChatRoomSelectionTab(client)
+	// Get chat rooms for user
+	rooms, err := client.getChatRoomsForUser()
+	if err != nil {
+		widgets.QMessageBox_Information(nil, "Error", "Could not join user's chat rooms",
+			widgets.QMessageBox__Ok, widgets.QMessageBox__Ok)
+		return
+	}
+	if rooms == nil {
+		return
+	}
+	for _, room := range rooms {
+		CreateChatTab(client, room.Name)
+	}
+}
+
 // CreateChatWindow creates a window which contains the log and the ability to send messages
 func CreateChatWindow(client *Client) *widgets.QApplication {
 	// Create application
 	app := widgets.NewQApplication(len(os.Args), os.Args)
+
+	// Link the signals and slots for GUI editing outside this thread
+	model.GetUIInstance().ClientQTInstance = model.NewClientQT(nil)
+	model.GetUIInstance().ClientQTInstance.ConnectReloadUI(func() { ReloadUI(client) })
 
 	// Create new tab widget
 	model.GetUIInstance().TabWidget = widgets.NewQTabWidget(nil)
@@ -254,28 +278,15 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 			return
 		}
 		assignUserName(client, usernameInput.Text())
-		model.GetUIInstance().TabWidget.RemoveTab(0)
-		createChatRoomSelectionTab(client)
 		// Update the server about user config info
 		err := client.UpdateUser()
 		if err != nil {
 			widgets.QMessageBox_Information(nil, "Error", "Failed to update server about client config",
 				widgets.QMessageBox__Ok, widgets.QMessageBox__Ok)
-			return
+			// Can't really recover from this point. Major server error. TODO: Gracefully retry
+			os.Exit(2)
 		}
-		// Get chat rooms for user
-		rooms, err := client.getChatRoomsForUser()
-		if err != nil {
-			widgets.QMessageBox_Information(nil, "Error", "Could not join user's chat rooms",
-				widgets.QMessageBox__Ok, widgets.QMessageBox__Ok)
-			return
-		}
-		if rooms == nil {
-			return
-		}
-		for _, room := range rooms {
-			CreateChatTab(client, room.Name)
-		}
+		ReloadUI(client)
 	})
 
 	model.GetUIInstance().TabWidget.AddTab(mainWidget, "Config")

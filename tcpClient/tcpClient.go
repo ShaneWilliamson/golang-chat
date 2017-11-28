@@ -205,9 +205,22 @@ func (client *Client) UpdateUser() error {
 	return nil
 }
 
+func (client *Client) receiveUserUpdate(writer http.ResponseWriter, req *http.Request) {
+	bodyBytes, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		fmt.Println("Error reading the message from the request body")
+		writer.WriteHeader(http.StatusBadRequest)
+	}
+	var user *model.User
+	json.Unmarshal(bodyBytes, &user)
+	client.User = user
+	model.GetUIInstance().ClientQTInstance.ReloadUI()
+}
+
 func (client *Client) subscribeToServer() {
 	fmt.Println("Starting client message subscription...")
 	http.HandleFunc("/message", client.receiveMessage)
+	http.HandleFunc("/update", client.receiveUserUpdate)
 	fmt.Println((http.ListenAndServe(fmt.Sprintf(":%d", config.GetInstance().ClientConfig.MessagePort), nil).Error()))
 }
 
