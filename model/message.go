@@ -23,3 +23,8 @@ func ConvertMessageToBuffer(message *Message) *bytes.Buffer {
 	json.NewEncoder(b).Encode(&message)
 	return b
 }
+
+// ConstructErrorMessage returns a newly made error message, for a particular room
+func ConstructErrorMessage(roomName string) *Message {
+	return &Message{ChatRoomName: roomName, UserName: "SYSTEM", Body: "REQUEST ERROR"}
+}

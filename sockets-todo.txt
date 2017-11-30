@@ -1,5 +1,3 @@
-PACKAGE: "encoding/gob"
-
 https://stackoverflow.com/questions/41782004/send-json-to-a-unix-socket-with-golang
 https://stackoverflow.com/questions/30190159/golang-server-how-to-receive-tcp-json-packet
 https://systembash.com/a-simple-go-tcp-server-and-tcp-client/

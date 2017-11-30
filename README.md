@@ -1,7 +1,7 @@
 
-# HTTP Chat Client + Server
+# TCP Socket Chat Client + Server
 
-A client and server implementation which relies on HTTP for communication.
+A client and server implementation which relies on TCP Sockets for communication.
 
 ![alt text](https://storage.googleapis.com/shanew/GolangChat/Chat1.png "Config Screen")
 

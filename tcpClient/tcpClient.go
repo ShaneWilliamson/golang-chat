@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net/http"
 
 	"github.com/ShaneWilliamson/golang-chat/config"
@@ -21,6 +22,7 @@ type Client struct {
 	User       *model.User
 	HTTPClient *http.Client
 	Conn       *net.Conn
+	Link       *net.Listener
 }
 
 // CreateReader this is split out for testing purposes
@@ -41,13 +43,11 @@ func printMessage(m *model.Message) {
 func (client *Client) sendMessage(chatRoomName string, text string) {
 	// Format the message for serialization
 	m := constructMessage(chatRoomName, client.User.UserName, text)
-	messageBuffer := model.ConvertMessageToBuffer(m)
-
-	resp, err := client.HTTPClient.Post("http://localhost:8081/message", "application/json; charset=utf-8", messageBuffer)
-	defer resp.Body.Close()
+	req := model.ConvertToGenericRequest("Message", "message", nil, m)
+	enc := json.NewEncoder(*client.Conn)
+	err := enc.Encode(req)
 	if err != nil {
 		fmt.Println(err.Error())
-		return
 	}
 }
 
@@ -80,52 +80,49 @@ func readMessageFromUser(client *Client) (string, error) {
 }
 
 func (client *Client) getServerLog(roomName string) ([]*model.Message, error) {
-
-	// Format the message for serialization
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&roomName)
-	res, err := client.HTTPClient.Post("http://localhost:8081/log", "application/json; charset=utf-8", b)
+	params := make(map[string]string)
+	params["roomName"] = roomName
+	req := model.ConvertToGenericRequest("GetRequest", "log", params, nil)
+	enc := json.NewEncoder(*client.Conn)
+	dec := json.NewDecoder(*client.Conn)
+	// Send the request
+	enc.Encode(&roomName)
 	// Wait for the response to complete
-	defer res.Body.Close()
-	if err != nil {
-		fmt.Println(err.Error())
-		return nil, err
-	}
-	bodyBytes, _ := ioutil.ReadAll(res.Body)
 	var serverLog []*model.Message
-	json.Unmarshal(bodyBytes, &serverLog)
+	dec.Decode(&serverLog)
 	return serverLog, nil
 }
 
 func (client *Client) getChatRooms() ([]*model.ChatRoom, error) {
-	res, err := client.HTTPClient.Get("http://localhost:8081/chatrooms/list")
+	req := model.ConvertToGenericRequest("", "chatroomsList", nil, nil)
+	enc := json.NewEncoder(*client.Conn)
+	dec := json.NewDecoder(*client.Conn)
+	// Send the request
+	enc.Encode(&req)
 	// Wait for the response to complete
-	defer res.Body.Close()
-	if err != nil {
-		fmt.Println(err.Error())
-		return nil, err
-	}
-	bodyBytes, _ := ioutil.ReadAll(res.Body)
 	var chatRooms []*model.ChatRoom
-	json.Unmarshal(bodyBytes, &chatRooms)
+	dec.Decode(&chatRooms)
 	return chatRooms, nil
 }
 
 func (client *Client) getChatRoomsForUser() ([]*model.ChatRoom, error) {
-	// Format the body for serialization
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&client.User.UserName)
+	params := make(map[string]string)
+	params["userName"] = client.User.UserName
+	req := model.ConvertToGenericRequest("", "chatroomsListForUser", params, nil)
 
-	res, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/forUser", "application/json; charset=utf-8", b)
-	// Wait for the response to complete
-	defer res.Body.Close()
+	enc := json.NewEncoder(*client.Conn)
+	dec := json.NewDecoder(*client.Conn)
+	// Send the request
+	err := enc.Encode(&req)
 	if err != nil {
-		fmt.Println(err.Error())
-		return nil, err
+		log.Fatal("Failed to send get request for chat rooms for user")
 	}
-	bodyBytes, _ := ioutil.ReadAll(res.Body)
+	// Wait for the response to complete
 	var chatRooms []*model.ChatRoom
-	json.Unmarshal(bodyBytes, &chatRooms)
+	err = dec.Decode(&chatRooms)
+	if err != nil {
+		log.Fatal("Could not get chat rooms for user")
+	}
 	return chatRooms, nil
 }
 
@@ -192,7 +189,9 @@ func (client *Client) leaveChatRoom(roomName string) {
 // UpdateUser creates/updates the user on the server
 func (client *Client) UpdateUser() error {
 	// Format the message for serialization
-	// Use gob lib to encode the data
+
+	model.ConvertToGenericRequest("User", "userUpdate", nil, &client.User)
+
 	enc := json.NewEncoder(*client.Conn) // to write
 	err := enc.Encode(&client.User)
 	if err != nil {
@@ -223,7 +222,13 @@ func (client *Client) subscribeToServer() {
 
 // ConnectToServer establishes an initial connection with the server, gives user info, and prompts for the user to establish further connection
 func (client *Client) ConnectToServer() {
-	// Dial the server, TODO: Move this to after we specify our port, so that the server dials us
+	// var err error
+	// client.Link, err = net.Listen("tcp", Client.User.Config.MessagePort)
+	// if err != nil {
+	// 	fmt.Println("Error attempting to listen as client. Exiting.")
+	// 	os.Exit(1)
+	// }
+	// Dial the server
 	c, err := net.Dial("tcp", "localhost:8081")
 	if err != nil {
 		fmt.Println(err.Error())
@@ -231,6 +236,7 @@ func (client *Client) ConnectToServer() {
 		os.Exit(1)
 	}
 	client.Conn = &c
+	client.UpdateUser()
 }
 
 // Create makes a new tcp client and waits to send a message to the target server.
@@ -241,7 +247,6 @@ func Create() {
 	client := &Client{
 		HTTPClient: &http.Client{},
 		User:       &model.User{},
-		Conn:       &c,
 	}
 
 	// And now we create the GUI

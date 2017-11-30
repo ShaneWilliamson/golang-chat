@@ -5,6 +5,7 @@ import (
 	"container/heap"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 
 	"encoding/json"
 
-	"github.com/ShaneWilliamson/golang-chat/config"
 	"github.com/ShaneWilliamson/golang-chat/model"
 )
 
@@ -42,14 +42,7 @@ func GetServerInstance() *Server {
 
 // ***********************************
 
-func receiveMessage(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the message from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var message *model.Message
-	json.Unmarshal(bodyBytes, &message)
+func receiveMessage(message *model.Message) {
 	room, err := getRoomForName(message.ChatRoomName)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -63,47 +56,29 @@ func receiveMessage(writer http.ResponseWriter, req *http.Request) {
 	go HandleChatRoomDestruction()
 }
 
-func getLog(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the room name from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var chatRoomName string
-	json.Unmarshal(bodyBytes, &chatRoomName)
+func getLog(conn *net.Conn, chatRoomName string) {
 	room, err := getRoomForName(chatRoomName)
+	enc := json.NewEncoder(*conn)
 	if err != nil {
 		fmt.Println(err.Error())
-		writer.WriteHeader(http.StatusNotFound)
+		var errMessage []*model.Message
+		errMessage = append(errMessage, model.ConstructErrorMessage(chatRoomName))
+		enc.Encode(errMessage)
 		return
 	}
-	serializedLog, err := json.Marshal(&room.Log)
-	if err != nil {
-		fmt.Println("Marshalling the log has failed.")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	writer.Write(serializedLog)
+	enc.Encode(room.Log)
 }
 
-func listRooms(writer http.ResponseWriter, req *http.Request) {
+func listRooms(conn *net.Conn) {
 	server := GetServerInstance()
-	serializedRooms, err := json.Marshal(&server.Rooms)
+	enc := json.NewEncoder(*conn)
+	err := enc.Encode(&server.Rooms)
 	if err != nil {
-		fmt.Println("Marshalling the rooms has failed.")
-		writer.WriteHeader(http.StatusInternalServerError)
+		fmt.Println("Listing the rooms to the client has failed.")
 	}
-	writer.Write(serializedRooms)
 }
 
-func listRoomsForUser(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the user from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var userName string
-	json.Unmarshal(bodyBytes, &userName)
-
+func listRoomsForUser(conn *net.Conn, userName string) {
 	var roomsForUser []*model.ChatRoom
 	found := false
 	server := GetServerInstance()
@@ -117,12 +92,11 @@ func listRoomsForUser(writer http.ResponseWriter, req *http.Request) {
 	if !found {
 		server.Users = append(server.Users, &model.User{UserName: userName})
 	}
-	serializedRooms, err := json.Marshal(&roomsForUser)
+	enc := json.NewEncoder(*conn)
+	err := enc.Encode(&roomsForUser)
 	if err != nil {
 		fmt.Println("Marshalling the rooms has failed.")
-		writer.WriteHeader(http.StatusInternalServerError)
 	}
-	writer.Write(serializedRooms)
 }
 
 func createRoom(writer http.ResponseWriter, req *http.Request) {
@@ -226,26 +200,15 @@ func leaveRoom(writer http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func updateUser(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the message from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var user *model.User
-	json.Unmarshal(bodyBytes, &user)
-	updateUserConfig(user.UserName, user.Config)
-}
-
 // ***********************************
 
-func updateUserConfig(userName string, config *config.ClientConfig) {
-	user := getUser(userName)
+func createOrUpdateUser(u *model.User) {
+	user := getUser(u.UserName)
 	if user != nil {
-		user.Config = config
+		user.Config = u.Config
 	} else {
 		server := GetServerInstance()
-		server.Users = append(server.Users, &model.User{UserName: userName, Config: config})
+		server.Users = append(server.Users, &model.User{UserName: u.UserName, Config: u.Config})
 	}
 }
 
@@ -307,12 +270,12 @@ func start(link net.Listener) {
 	fmt.Println("Starting server...")
 	// Listen for new client tcp socket connections
 	for {
-		acceptNewClientConnection(link)
-		go openConnectionWithClient(&clientConn)
+		conn := acceptNewClientConnection(link)
+		go handleClientConnection(conn)
 	}
 }
 
-func acceptNewClientConnection(link net.Listener) {
+func acceptNewClientConnection(link net.Listener) *net.Conn {
 	// Wait for the next call, and returns a generic connection
 	c, err := link.Accept()
 	if err != nil {
@@ -320,17 +283,45 @@ func acceptNewClientConnection(link net.Listener) {
 		fmt.Println("Failed to accept a new connection. Exiting.")
 		os.Exit(3)
 	}
-	dec := json.NewDecoder(c)
-	var user model.User
-	err := dec.Decode(&user)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(2)
+	return &c
+}
+
+func handleClientConnection(conn *net.Conn) {
+	dec := json.NewDecoder(*conn)
+	for {
+		var req *model.GenericRequest
+		err := dec.Decode(&req)
+		if err == io.EOF {
+			fmt.Println("Client connection closed")
+			return
+		}
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+		handleRequest(req, conn)
 	}
 }
 
-func openConnectionWithClient(c *net.Conn) {
+func handleRequest(req *model.GenericRequest, conn *net.Conn) {
+	data := model.ConvertFromGenericRequest(req)
 
+	// ** Endpoints **
+	switch req.Endpoint {
+	case "log":
+		getLog(conn, req.Params["roomName"])
+	case "userUpdate":
+		user, ok := data.(model.User)
+		if !ok {
+			fmt.Println("Failed to load User from request data")
+			return
+		}
+		createOrUpdateUser(&user)
+	case "chatroomsList":
+		listRooms(conn)
+	case "chatroomsListForUser":
+		listRoomsForUser(conn, req.Params["userName"])
+	}
 }
 
 // HandleChatRoomDestruction launches a routine to destroy the next available chat room, returns if no rooms exist
