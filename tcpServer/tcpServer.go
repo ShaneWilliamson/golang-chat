@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
-	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -97,15 +95,7 @@ func listRoomsForUser(conn *net.Conn, userName string) {
 	}
 }
 
-func createRoom(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the room from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var chatRoomName string
-	json.Unmarshal(bodyBytes, &chatRoomName)
-
+func createRoom(chatRoomName string) {
 	// If the room already exists, don't create a duplicate, return
 	if _, err := getRoomForName(chatRoomName); err == nil {
 		return
@@ -118,14 +108,7 @@ func createRoom(writer http.ResponseWriter, req *http.Request) {
 	go HandleChatRoomDestruction()
 }
 
-func joinRoom(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the room from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var joinRequest *model.ChatRoomRequest
-	json.Unmarshal(bodyBytes, &joinRequest)
+func joinRoom(joinRequest *model.ChatRoomRequest) {
 	server := GetServerInstance()
 	for _, room := range server.Rooms {
 		if room.Name != joinRequest.RoomName {
@@ -133,13 +116,13 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 		}
 		// Check, lock, check
 		if len(room.Users) >= room.MaxUsers {
-			writer.WriteHeader(http.StatusForbidden)
+			fmt.Println("Cannot let user join, max users reached")
 			return
 		}
 		room.Mux.Lock()
 		if len(room.Users) >= room.MaxUsers {
 			room.Mux.Unlock()
-			writer.WriteHeader(http.StatusForbidden)
+			fmt.Println("Cannot let user join, max users reached")
 			return
 		}
 		// If the user isn't already in the room, add them to the room
@@ -158,14 +141,7 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func leaveRoom(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the room from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var leaveRequest *model.ChatRoomRequest
-	json.Unmarshal(bodyBytes, &leaveRequest)
+func leaveRoom(leaveRequest *model.ChatRoomRequest) {
 	server := GetServerInstance()
 	for _, room := range server.Rooms {
 		if room.Name != leaveRequest.RoomName {
@@ -179,7 +155,7 @@ func leaveRoom(writer http.ResponseWriter, req *http.Request) {
 		// Update chat room
 		if room.RemoveUser(user.UserName) != nil {
 			room.Mux.Unlock()
-			writer.WriteHeader(http.StatusForbidden)
+			fmt.Println("Cannot remove user from room they are not in")
 			return
 		}
 
@@ -189,7 +165,7 @@ func leaveRoom(writer http.ResponseWriter, req *http.Request) {
 			// Add the user back to the room, the operation failed
 			room.Users = append(room.Users, user)
 			room.Mux.Unlock()
-			writer.WriteHeader(http.StatusForbidden)
+			fmt.Println("Removing the user from the room failed")
 			return
 		}
 
@@ -206,8 +182,22 @@ func createOrUpdateUser(u *model.User) {
 		user.Config = u.Config
 	} else {
 		server := GetServerInstance()
-		server.Users = append(server.Users, &model.User{UserName: u.UserName, Config: u.Config})
+		user = &model.User{UserName: u.UserName, Config: u.Config}
+		server.Users = append(server.Users, user)
 	}
+	if user.Conn == nil {
+		go connectToUser(user)
+	}
+}
+
+func connectToUser(user *model.User) {
+	conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", user.Config.MessagePort))
+	if err != nil {
+		fmt.Println(err.Error())
+		fmt.Println("Client dialing failed. Exiting.")
+		os.Exit(1)
+	}
+	user.Conn = &conn
 }
 
 func getUser(userName string) *model.User {
@@ -259,11 +249,11 @@ func broadcastMessage(message *model.Message) {
 
 func sendMessageToUser(message *model.Message, user *model.User) {
 	// Get the user's connection if it exists
-	if user.Config.Conn == nil {
+	if user.Conn == nil {
 		return
 	}
 	req := model.ConvertToGenericRequest("Message", "message", nil, message)
-	enc := json.NewEncoder(*user.Config.Conn)
+	enc := json.NewEncoder(*user.Conn)
 	enc.Encode(req)
 }
 
@@ -296,7 +286,7 @@ func handleClientConnection(conn *net.Conn) {
 		if err == io.EOF {
 			fmt.Println("Client connection closed")
 			if user != nil {
-				user.Config.Conn = nil
+				getUser(user.UserName).Conn = nil
 			}
 			return
 		}
@@ -337,6 +327,22 @@ func handleRequest(req *model.GenericRequest, conn *net.Conn) *model.User {
 			return nil
 		}
 		receiveMessage(&message)
+	case "chatroomsCreate":
+		createRoom(req.Params["roomName"])
+	case "chatroomsJoin":
+		chatReq, ok := data.(model.ChatRoomRequest)
+		if !ok {
+			fmt.Println("Failed to parse ChatRoomRequest from data")
+			return nil
+		}
+		joinRoom(&chatReq)
+	case "chatroomsLeave":
+		chatReq, ok := data.(model.ChatRoomRequest)
+		if !ok {
+			fmt.Println("Failed to parse ChatRoomRequest from data")
+			return nil
+		}
+		leaveRoom(&chatReq)
 	}
 	return nil
 }
@@ -417,11 +423,11 @@ func destroyInactiveRoom(room *model.ChatRoom) {
 
 func updateClient(user *model.User) {
 	// Get the user's connection if it exists
-	if user.Config.Conn == nil {
+	if user.Conn == nil {
 		return
 	}
 	req := model.ConvertToGenericRequest("User", "update", nil, user)
-	enc := json.NewEncoder(*user.Config.Conn)
+	enc := json.NewEncoder(*user.Conn)
 	enc.Encode(req)
 }
 

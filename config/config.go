@@ -1,7 +1,6 @@
 package config
 
 import (
-	"net"
 	"sync"
 )
 
@@ -24,7 +23,6 @@ func GetInstance() *Config {
 // ClientConfig houses the configurations for the client portion of the program
 type ClientConfig struct {
 	MessagePort uint16
-	Conn        *net.Conn
 }
 
 // ServerConfig houses the configurations for the client portion of the program

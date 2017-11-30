@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"net"
 
 	"github.com/ShaneWilliamson/golang-chat/config"
 )
@@ -11,6 +12,7 @@ type User struct {
 	UserName  string
 	ChatRooms []*ChatRoom
 	Config    *config.ClientConfig
+	Conn      *net.Conn
 }
 
 // GetRoom returns the room if found, nil otherwise

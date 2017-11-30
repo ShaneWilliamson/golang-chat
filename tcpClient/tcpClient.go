@@ -1,7 +1,6 @@
 package tcpClient
 
 import (
-	"bytes"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -77,7 +76,7 @@ func (client *Client) getServerLog(roomName string) ([]*model.Message, error) {
 	enc := json.NewEncoder(*client.Conn)
 	dec := json.NewDecoder(*client.Conn)
 	// Send the request
-	enc.Encode(&roomName)
+	enc.Encode(req)
 	// Wait for the response to complete
 	var serverLog []*model.Message
 	dec.Decode(&serverLog)
@@ -118,12 +117,12 @@ func (client *Client) getChatRoomsForUser() ([]*model.ChatRoom, error) {
 }
 
 func (client *Client) createChatRoom(roomName string) {
-	// Format the body for serialization
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&roomName)
+	params := make(map[string]string)
+	params["roomName"] = roomName
+	req := model.ConvertToGenericRequest("", "chatroomsCreate", params, nil)
 
-	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/create", "application/json; charset=utf-8", b)
-	defer resp.Body.Close()
+	enc := json.NewEncoder(*client.Conn) // to write
+	err := enc.Encode(req)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -139,13 +138,12 @@ func (client *Client) joinChatRoom(roomName string) {
 	}
 	// Format the body for serialization
 	joinRequest := &model.ChatRoomRequest{User: client.User, RoomName: roomName}
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&joinRequest)
+	req := model.ConvertToGenericRequest("ChatRoomRequest", "chatroomsJoin", nil, joinRequest)
 
-	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/join", "application/json; charset=utf-8", b)
-	defer resp.Body.Close()
-	if err != nil || resp.StatusCode != 200 {
-		// Failed to join the chat room
+	enc := json.NewEncoder(*client.Conn) // to write
+	err := enc.Encode(req)
+	if err != nil {
+		fmt.Println(err.Error())
 		DisplayErrorDialogWithMessage("Cannot join, max users reached")
 		return
 	}
@@ -154,14 +152,13 @@ func (client *Client) joinChatRoom(roomName string) {
 
 func (client *Client) leaveChatRoom(roomName string) {
 	// Format the body for serialization
-	joinRequest := &model.ChatRoomRequest{User: client.User, RoomName: roomName}
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&joinRequest)
+	leaveRequest := &model.ChatRoomRequest{User: client.User, RoomName: roomName}
+	req := model.ConvertToGenericRequest("ChatRoomRequest", "chatroomsLeave", nil, leaveRequest)
 
-	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms/leave", "application/json; charset=utf-8", b)
-	defer resp.Body.Close()
-	if err != nil || resp.StatusCode != 200 {
-		// Failed to join the chat room
+	enc := json.NewEncoder(*client.Conn) // to write
+	err := enc.Encode(req)
+	if err != nil {
+		fmt.Println(err.Error())
 		DisplayErrorDialogWithMessage("Failed to leave chat room, please try again")
 		return
 	}
@@ -179,12 +176,10 @@ func (client *Client) leaveChatRoom(roomName string) {
 
 // UpdateUser creates/updates the user on the server
 func (client *Client) UpdateUser() error {
-	// Format the message for serialization
-
-	model.ConvertToGenericRequest("User", "userUpdate", nil, &client.User)
+	req := model.ConvertToGenericRequest("User", "userUpdate", nil, &client.User)
 
 	enc := json.NewEncoder(*client.Conn) // to write
-	err := enc.Encode(&client.User)
+	err := enc.Encode(req)
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
@@ -202,7 +197,10 @@ func (client *Client) handleRequests() {
 	dec := json.NewDecoder(*conn)
 	for {
 		var req *model.GenericRequest
-		dec.Decode(req)
+		err := dec.Decode(&req)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
 		client.handleGenericRequest(req)
 	}
 }
@@ -210,19 +208,19 @@ func (client *Client) handleRequests() {
 func (client *Client) handleGenericRequest(req *model.GenericRequest) {
 	switch req.Endpoint {
 	case "message":
-		message, ok := model.ConvertFromGenericRequest(req).(*model.Message)
+		message, ok := model.ConvertFromGenericRequest(req).(model.Message)
 		if !ok {
 			fmt.Println("Failed to receive message from server")
 			return
 		}
-		client.receiveMessage(message)
+		client.receiveMessage(&message)
 	case "update":
-		user, ok := model.ConvertFromGenericRequest(req).(*model.User)
+		user, ok := model.ConvertFromGenericRequest(req).(model.User)
 		if !ok {
 			fmt.Println("Failed to receive user update from server")
 			return
 		}
-		client.receiveUserUpdate(user)
+		client.receiveUserUpdate(&user)
 	default:
 		log.Fatal("Invalid client endpoint")
 	}
@@ -256,10 +254,14 @@ func (client *Client) ConnectToServer() {
 	if err != nil {
 		fmt.Println(err.Error())
 		fmt.Println("Client dialing failed. Exiting.")
-		os.Exit(1)
+		os.Exit(3)
 	}
 	client.Conn = &c
-	client.UpdateUser()
+	err = client.UpdateUser()
+	if err != nil {
+		fmt.Println("Failed to update user data")
+		os.Exit(4)
+	}
 	go client.handleRequests()
 }
 
