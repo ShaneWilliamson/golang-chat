@@ -3,11 +3,9 @@ package tcpClient
 import (
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
 	"log"
 	"net/http"
 
-	"github.com/ShaneWilliamson/golang-chat/config"
 	"github.com/ShaneWilliamson/golang-chat/model"
 
 	"bufio"
@@ -51,14 +49,7 @@ func (client *Client) sendMessage(chatRoomName string, text string) {
 	}
 }
 
-func (client *Client) receiveMessage(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the message from the request body")
-		writer.WriteHeader(http.StatusBadRequest)
-	}
-	var message *model.Message
-	json.Unmarshal(bodyBytes, &message)
+func (client *Client) receiveMessage(message *model.Message) {
 	var chatTab *model.ClientChatTab
 	for _, room := range model.GetUIInstance().ChatTabs {
 		if room.Name == message.ChatRoomName {
@@ -201,23 +192,55 @@ func (client *Client) UpdateUser() error {
 	return nil
 }
 
-func (client *Client) receiveUserUpdate(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the message from the request body")
-		writer.WriteHeader(http.StatusBadRequest)
-	}
-	var user *model.User
-	json.Unmarshal(bodyBytes, &user)
+func (client *Client) receiveUserUpdate(user *model.User) {
 	client.User = user
 	model.GetUIInstance().ClientQTInstance.ReloadUI()
 }
 
-func (client *Client) subscribeToServer() {
-	fmt.Println("Starting client message subscription...")
-	http.HandleFunc("/message", client.receiveMessage)
-	http.HandleFunc("/update", client.receiveUserUpdate)
-	fmt.Println((http.ListenAndServe(fmt.Sprintf(":%d", config.GetInstance().ClientConfig.MessagePort), nil).Error()))
+func (client *Client) handleRequests() {
+	conn := client.listenForServer()
+	dec := json.NewDecoder(*conn)
+	for {
+		var req *model.GenericRequest
+		dec.Decode(req)
+		client.handleGenericRequest(req)
+	}
+}
+
+func (client *Client) handleGenericRequest(req *model.GenericRequest) {
+	switch req.Endpoint {
+	case "message":
+		message, ok := model.ConvertFromGenericRequest(req).(*model.Message)
+		if !ok {
+			fmt.Println("Failed to receive message from server")
+			return
+		}
+		client.receiveMessage(message)
+	case "update":
+		user, ok := model.ConvertFromGenericRequest(req).(*model.User)
+		if !ok {
+			fmt.Println("Failed to receive user update from server")
+			return
+		}
+		client.receiveUserUpdate(user)
+	default:
+		log.Fatal("Invalid client endpoint")
+	}
+}
+
+func (client *Client) listenForServer() *net.Conn {
+	link, err := net.Listen("tcp", fmt.Sprintf(":%d", client.User.Config.MessagePort))
+	if err != nil {
+		fmt.Println("Error attempting to listen on client port. Exiting.")
+		os.Exit(1)
+	}
+	var conn net.Conn
+	conn, err = link.Accept()
+	if err != nil {
+		fmt.Println("Failed to accept connection from server, exiting")
+		os.Exit(2)
+	}
+	return &conn
 }
 
 // ConnectToServer establishes an initial connection with the server, gives user info, and prompts for the user to establish further connection
@@ -237,6 +260,7 @@ func (client *Client) ConnectToServer() {
 	}
 	client.Conn = &c
 	client.UpdateUser()
+	go client.handleRequests()
 }
 
 // Create makes a new tcp client and waits to send a message to the target server.

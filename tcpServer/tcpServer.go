@@ -1,7 +1,6 @@
 package tcpServer
 
 import (
-	"bytes"
 	"container/heap"
 	"errors"
 	"fmt"
@@ -248,21 +247,24 @@ func getRoomForName(chatRoomName string) (*model.ChatRoom, error) {
 }
 
 func broadcastMessage(message *model.Message) {
-	client := &http.Client{}
 	room, err := getRoomForName(message.ChatRoomName)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 	for _, user := range room.Users {
-		go sendMessageToUser(client, message, user)
+		go sendMessageToUser(message, user)
 	}
 }
 
-func sendMessageToUser(client *http.Client, message *model.Message, user *model.User) {
-	// Format the message for serialization
-	messageBuffer := model.ConvertMessageToBuffer(message)
-	client.Post(fmt.Sprintf("http://localhost:%d/message", user.Config.MessagePort), "application/json; charset=utf-8", messageBuffer)
+func sendMessageToUser(message *model.Message, user *model.User) {
+	// Get the user's connection if it exists
+	if user.Config.Conn == nil {
+		return
+	}
+	req := model.ConvertToGenericRequest("Message", "message", nil, message)
+	enc := json.NewEncoder(*user.Config.Conn)
+	enc.Encode(req)
 }
 
 func start(link net.Listener) {
@@ -287,22 +289,29 @@ func acceptNewClientConnection(link net.Listener) *net.Conn {
 
 func handleClientConnection(conn *net.Conn) {
 	dec := json.NewDecoder(*conn)
+	var user *model.User
 	for {
 		var req *model.GenericRequest
 		err := dec.Decode(&req)
 		if err == io.EOF {
 			fmt.Println("Client connection closed")
+			if user != nil {
+				user.Config.Conn = nil
+			}
 			return
 		}
 		if err != nil {
 			fmt.Println(err.Error())
 			return
 		}
-		handleRequest(req, conn)
+		result := handleRequest(req, conn)
+		if result != nil {
+			user = result
+		}
 	}
 }
 
-func handleRequest(req *model.GenericRequest, conn *net.Conn) {
+func handleRequest(req *model.GenericRequest, conn *net.Conn) *model.User {
 	data := model.ConvertFromGenericRequest(req)
 
 	// ** Endpoints **
@@ -313,14 +322,23 @@ func handleRequest(req *model.GenericRequest, conn *net.Conn) {
 		user, ok := data.(model.User)
 		if !ok {
 			fmt.Println("Failed to load User from request data")
-			return
+			return nil
 		}
 		createOrUpdateUser(&user)
+		return &user
 	case "chatroomsList":
 		listRooms(conn)
 	case "chatroomsListForUser":
 		listRoomsForUser(conn, req.Params["userName"])
+	case "message":
+		message, ok := data.(model.Message)
+		if !ok {
+			fmt.Println("Failed to load Message from request data")
+			return nil
+		}
+		receiveMessage(&message)
 	}
+	return nil
 }
 
 // HandleChatRoomDestruction launches a routine to destroy the next available chat room, returns if no rooms exist
@@ -398,10 +416,13 @@ func destroyInactiveRoom(room *model.ChatRoom) {
 }
 
 func updateClient(user *model.User) {
-	client := &http.Client{}
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&user)
-	client.Post(fmt.Sprintf("http://localhost:%d/update", user.Config.MessagePort), "application/json; charset=utf-8", b)
+	// Get the user's connection if it exists
+	if user.Config.Conn == nil {
+		return
+	}
+	req := model.ConvertToGenericRequest("User", "update", nil, user)
+	enc := json.NewEncoder(*user.Config.Conn)
+	enc.Encode(req)
 }
 
 // RemoveChatRoomFromRooms removes the desired room from the server's array of rooms

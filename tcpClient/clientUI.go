@@ -265,8 +265,6 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 		clientConfig.ClientConfig.MessagePort = uint16(port)
 		client.User.Config = clientConfig.ClientConfig
 
-		go client.subscribeToServer()
-
 		usernameInput.SetEnabled(true)
 		usernameButton.SetEnabled(true)
 	})
@@ -280,7 +278,7 @@ func CreateChatWindow(client *Client) *widgets.QApplication {
 		assignUserName(client, usernameInput.Text())
 		// Update the server about user config info
 		client.ConnectToServer()
-		err := client.UpdateUser()
+		err := client.UpdateUser() // TODO: Remove this duplicate section
 		if err != nil {
 			widgets.QMessageBox_Information(nil, "Error", "Failed to update server about client config",
 				widgets.QMessageBox__Ok, widgets.QMessageBox__Ok)
