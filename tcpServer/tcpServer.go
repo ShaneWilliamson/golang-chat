@@ -46,7 +46,6 @@ func receiveMessage(message *model.Message) {
 	room, err := getRoomForName(message.ChatRoomName)
 	if err != nil {
 		fmt.Println(err.Error())
-		writer.WriteHeader(http.StatusForbidden)
 		return
 	}
 	if room.GetUser(message.UserName) != nil {
