@@ -1,16 +1,15 @@
 package tcpServer
 
 import (
-	"bytes"
 	"container/heap"
 	"errors"
 	"fmt"
-	"net/http"
+	"log"
+	"net"
 	"net/rpc"
+	"net/rpc/jsonrpc"
 	"sync"
 	"time"
-
-	"encoding/json"
 
 	"github.com/ShaneWilliamson/golang-chat/config"
 	"github.com/ShaneWilliamson/golang-chat/model"
@@ -52,7 +51,7 @@ func (server *Server) ReceiveMessage(message *model.Message, reply *model.Reply)
 		go broadcastMessage(message)
 	}
 	go HandleChatRoomDestruction()
-	*reply = model.Reply{}
+	*reply = model.Reply{Value: "foo"}
 	return nil
 }
 
@@ -64,6 +63,9 @@ func (server *Server) GetLog(roomName string, log *[]*model.Message) error {
 		return err
 	}
 	*log = room.Log
+	if len(*log) == 0 {
+		return errors.New("No messages in log")
+	}
 	return nil
 }
 
@@ -71,9 +73,15 @@ func (server *Server) GetLog(roomName string, log *[]*model.Message) error {
 func (server *Server) ListRooms(userName string, rooms *[]*model.ChatRoom) error {
 	if userName == "" {
 		*rooms = server.Rooms
+		if len(*rooms) == 0 {
+			return errors.New("No chatrooms exist")
+		}
 		return nil
 	}
 	*rooms = server.listRoomsForUser(userName)
+	if len(*rooms) == 0 {
+		return errors.New("No chatrooms exist")
+	}
 	return nil
 }
 
@@ -104,7 +112,7 @@ func (server *Server) CreateRoom(chatRoomName string, reply *model.Reply) error 
 	heap.Push(pq, chatRoom)
 	server.Rooms = append(server.Rooms, chatRoom)
 	go HandleChatRoomDestruction()
-	*reply = model.Reply{}
+	*reply = model.Reply{Value: "foo"}
 	return nil
 }
 
@@ -137,6 +145,7 @@ func (server *Server) JoinRoom(req *model.ChatRoomRequest, reply *model.Reply) e
 		}
 
 		room.Mux.Unlock()
+		*reply = model.Reply{Value: "foo"}
 		return nil
 	}
 	return errors.New("Could not find room to join")
@@ -171,6 +180,7 @@ func (server *Server) LeaveRoom(req *model.ChatRoomRequest, reply *model.Reply) 
 		}
 
 		room.Mux.Unlock()
+		*reply = model.Reply{Value: "foo"}
 		return nil
 	}
 	return nil
@@ -179,7 +189,7 @@ func (server *Server) LeaveRoom(req *model.ChatRoomRequest, reply *model.Reply) 
 // UpdateUser updates a user's info
 func (server *Server) UpdateUser(user *model.User, reply *model.Reply) error {
 	updateUserConfig(user.UserName, user.Config)
-	*reply = model.Reply{}
+	*reply = model.Reply{Value: "foo"}
 	return nil
 }
 
@@ -232,27 +242,28 @@ func getRoomForName(chatRoomName string) (*model.ChatRoom, error) {
 }
 
 func broadcastMessage(message *model.Message) {
-	client := &http.Client{}
 	room, err := getRoomForName(message.ChatRoomName)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 	for _, user := range room.Users {
-		go sendMessageToUser(client, message, user)
+		go sendMessageToUser(message, user)
 	}
 }
 
-func sendMessageToUser(client *http.Client, message *model.Message, user *model.User) {
+func sendMessageToUser(message *model.Message, user *model.User) {
 	// Format the message for serialization
-	messageBuffer := model.ConvertMessageToBuffer(message)
-	client.Post(fmt.Sprintf("http://localhost:%d/message", user.Config.MessagePort), "application/json; charset=utf-8", messageBuffer)
-}
-
-func start() {
-	fmt.Println("Starting server...")
-	// Create the HTTP server
-	fmt.Println((http.ListenAndServe(":8081", nil).Error()))
+	client, err := jsonrpc.Dial("tcp", fmt.Sprintf("localhost:%d", user.Config.MessagePort))
+	if err != nil {
+		log.Fatal("Server error:", err)
+	}
+	// Format the message for serialization
+	var reply *model.Reply
+	err = client.Call("RPCServer.ReceiveMessage", &message, &reply)
+	if err != nil {
+		log.Fatal("Server error:", err)
+	}
 }
 
 // HandleChatRoomDestruction launches a routine to destroy the next available chat room, returns if no rooms exist
@@ -330,10 +341,16 @@ func destroyInactiveRoom(room *model.ChatRoom) {
 }
 
 func updateClient(user *model.User) {
-	client := &http.Client{}
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&user)
-	client.Post(fmt.Sprintf("http://localhost:%d/user", user.Config.MessagePort), "application/json; charset=utf-8", b)
+	// Format the message for serialization
+	client, err := jsonrpc.Dial("tcp", fmt.Sprintf("localhost:%d", user.Config.MessagePort))
+	if err != nil {
+		log.Fatal("Server error:", err)
+	}
+	var reply *model.Reply
+	err = client.Call("RPCServer.ReceiveUserUpdate", &user, &reply)
+	if err != nil {
+		log.Fatal("Server error:", err)
+	}
 }
 
 // removeChatRoomFromRooms removes the desired room from the server's array of rooms
@@ -355,8 +372,20 @@ func Create() {
 
 	// register for rpc
 	server := GetServerInstance()
-	rpc.Register(server)
-	rpc.HandleHTTP()
-
-	start()
+	s := rpc.NewServer()
+	s.Register(server)
+	s.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
+	listener, e := net.Listen("tcp", ":8081")
+	if e != nil {
+		log.Fatal("listener error:", e)
+	}
+	fmt.Println("Starting server...")
+	for {
+		if conn, err := listener.Accept(); err != nil {
+			log.Fatal("accept error: " + err.Error())
+		} else {
+			log.Println("new connection established")
+			go s.ServeCodec(jsonrpc.NewServerCodec(conn))
+		}
+	}
 }

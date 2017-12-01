@@ -4,9 +4,9 @@ import (
 	"log"
 	"net/http"
 	"net/rpc"
+	"net/rpc/jsonrpc"
 	"sync"
 
-	"github.com/ShaneWilliamson/golang-chat/config"
 	"github.com/ShaneWilliamson/golang-chat/model"
 
 	"bufio"
@@ -64,11 +64,12 @@ func (client *Client) sendMessage(chatRoomName string, text string) {
 	var reply *model.Reply
 	err := client.RPCClient.Call("Server.ReceiveMessage", m, &reply)
 	if err != nil {
-		log.Fatal("Server error:", err)
+		log.Fatal("Server error1:", err)
 	}
 }
 
-func (s *RPCServer) receiveMessage(message *model.Message, reply *model.Reply) error {
+// ReceiveMessage receives new messages from the server
+func (s *RPCServer) ReceiveMessage(message *model.Message, reply *model.Reply) error {
 	var chatTab *model.ClientChatTab
 	for _, room := range model.GetUIInstance().ChatTabs {
 		if room.Name == message.ChatRoomName {
@@ -94,8 +95,11 @@ func readMessageFromUser(client *Client) (string, error) {
 func (client *Client) getServerLog(roomName string) ([]*model.Message, error) {
 	var serverLog []*model.Message
 	err := client.RPCClient.Call("Server.GetLog", roomName, &serverLog)
+	if err != nil && err.Error() == "No messages in log" {
+		return nil, nil
+	}
 	if err != nil {
-		log.Fatal("Server error:", err)
+		log.Fatal("Server error2:", err)
 	}
 	return serverLog, nil
 }
@@ -104,8 +108,11 @@ func (client *Client) getChatRooms() ([]*model.ChatRoom, error) {
 	var chatRooms []*model.ChatRoom
 	// We don't want a specific user's rooms, so we don't provide a username
 	err := client.RPCClient.Call("Server.ListRooms", "", &chatRooms)
+	if err != nil && err.Error() == "No chatrooms exist" {
+		return nil, nil
+	}
 	if err != nil {
-		log.Fatal("Server error:", err)
+		log.Fatal("Server error3:", err)
 	}
 	return chatRooms, nil
 }
@@ -114,8 +121,11 @@ func (client *Client) getChatRoomsForUser() ([]*model.ChatRoom, error) {
 	var chatRooms []*model.ChatRoom
 	// We want a specific user's rooms, so we provide a username
 	err := client.RPCClient.Call("Server.ListRooms", client.User.UserName, &chatRooms)
+	if err != nil && err.Error() == "No chatrooms exist" {
+		return nil, nil
+	}
 	if err != nil {
-		log.Fatal("Server error:", err)
+		log.Fatal("Server error4:", err)
 	}
 	return chatRooms, nil
 }
@@ -125,7 +135,7 @@ func (client *Client) createChatRoom(roomName string) {
 	// We want a specific user's rooms, so we provide a username
 	err := client.RPCClient.Call("Server.CreateRoom", roomName, &reply)
 	if err != nil {
-		log.Fatal("Server error:", err)
+		log.Fatal("Server error5:", err)
 	}
 	fmt.Printf("Successfully created room: %s\n", roomName)
 }
@@ -173,9 +183,9 @@ func (client *Client) leaveChatRoom(roomName string) {
 func (client *Client) UpdateUser() error {
 	var reply *model.Reply
 	// We want a specific user's rooms, so we provide a username
-	err := client.RPCClient.Call("Server.JoinRoom", &client.User, &reply)
+	err := client.RPCClient.Call("Server.UpdateUser", &client.User, &reply)
 	if err != nil {
-		log.Fatal("Server error:", err)
+		log.Fatal("Server error2:", err)
 	}
 	return nil
 }
@@ -189,14 +199,33 @@ func (s *RPCServer) ReceiveUserUpdate(user *model.User, reply *model.Reply) erro
 
 func (client *Client) subscribeToServer() {
 	fmt.Println("Starting server subscription...")
-	rpc.Register(client.RPCServer)
-	rpc.HandleHTTP()
+
+	go client.handleRPCCalls()
+
 	var err error
-	client.RPCClient, err = rpc.DialHTTP("tcp", "localhost:8081")
+	client.RPCClient, err = jsonrpc.Dial("tcp", "localhost:8081")
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
-	fmt.Println((http.ListenAndServe(fmt.Sprintf(":%d", config.GetInstance().ClientConfig.MessagePort), nil).Error()))
+}
+
+func (client *Client) handleRPCCalls() {
+	// register for rpc
+	server := GetClientInstance().RPCServer
+	s := rpc.NewServer()
+	s.Register(server)
+	s.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
+	listener, e := net.Listen("tcp", fmt.Sprintf(":%d", client.User.Config.MessagePort))
+	if e != nil {
+		log.Fatal("listener error:", e)
+	}
+	for {
+		if conn, err := listener.Accept(); err != nil {
+			log.Fatal("accept error: " + err.Error())
+		} else {
+			go s.ServeCodec(jsonrpc.NewServerCodec(conn))
+		}
+	}
 }
 
 // Create makes a new tcp client and waits to send a message to the target server.
