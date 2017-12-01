@@ -1,10 +1,10 @@
 package tcpClient
 
 import (
-	"bytes"
-	"encoding/json"
-	"io/ioutil"
+	"log"
 	"net/http"
+	"net/rpc"
+	"sync"
 
 	"github.com/ShaneWilliamson/golang-chat/config"
 	"github.com/ShaneWilliamson/golang-chat/model"
@@ -20,7 +20,28 @@ import (
 type Client struct {
 	User       *model.User
 	HTTPClient *http.Client
+	RPCClient  *rpc.Client
+	RPCServer  *RPCServer
 	Conn       *net.Conn
+}
+
+var clientinstance *Client
+var clientonce sync.Once
+
+// GetClientInstance returns a singleton instance of the server
+func GetClientInstance() *Client {
+	clientonce.Do(func() {
+		clientinstance = &Client{
+			HTTPClient: &http.Client{},
+			User:       &model.User{},
+			RPCServer:  &RPCServer{},
+		}
+	})
+	return clientinstance
+}
+
+// RPCServer is a placeholder struct as a client we use for providing RPC
+type RPCServer struct {
 }
 
 // CreateReader this is split out for testing purposes
@@ -39,26 +60,15 @@ func printMessage(m *model.Message) {
 }
 
 func (client *Client) sendMessage(chatRoomName string, text string) {
-	// Format the message for serialization
 	m := constructMessage(chatRoomName, client.User.UserName, text)
-	messageBuffer := model.ConvertMessageToBuffer(m)
-
-	resp, err := client.HTTPClient.Post("http://localhost:8081/message", "application/json; charset=utf-8", messageBuffer)
-	defer resp.Body.Close()
+	var reply *model.Reply
+	err := client.RPCClient.Call("Server.ReceiveMessage", m, &reply)
 	if err != nil {
-		fmt.Println(err.Error())
-		return
+		log.Fatal("Server error:", err)
 	}
 }
 
-func (client *Client) receiveMessage(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the message from the request body")
-		writer.WriteHeader(http.StatusBadRequest)
-	}
-	var message *model.Message
-	json.Unmarshal(bodyBytes, &message)
+func (s *RPCServer) receiveMessage(message *model.Message, reply *model.Reply) error {
 	var chatTab *model.ClientChatTab
 	for _, room := range model.GetUIInstance().ChatTabs {
 		if room.Name == message.ChatRoomName {
@@ -67,6 +77,8 @@ func (client *Client) receiveMessage(writer http.ResponseWriter, req *http.Reque
 		}
 	}
 	addMessageToLogView(message, chatTab)
+	*reply = model.Reply{}
+	return nil
 }
 
 func readMessageFromUser(client *Client) (string, error) {
@@ -80,58 +92,40 @@ func readMessageFromUser(client *Client) (string, error) {
 }
 
 func (client *Client) getServerLog(roomName string) ([]*model.Message, error) {
-	// Format the message for serialization
-	res, err := client.HTTPClient.Get(fmt.Sprintf("http://localhost:8081/log/%s", roomName))
-	// Wait for the response to complete
-	defer res.Body.Close()
-	if err != nil {
-		fmt.Println(err.Error())
-		return nil, err
-	}
-	bodyBytes, _ := ioutil.ReadAll(res.Body)
 	var serverLog []*model.Message
-	json.Unmarshal(bodyBytes, &serverLog)
+	err := client.RPCClient.Call("Server.GetLog", roomName, &serverLog)
+	if err != nil {
+		log.Fatal("Server error:", err)
+	}
 	return serverLog, nil
 }
 
 func (client *Client) getChatRooms() ([]*model.ChatRoom, error) {
-	res, err := client.HTTPClient.Get("http://localhost:8081/chatrooms/list")
-	// Wait for the response to complete
-	defer res.Body.Close()
-	if err != nil {
-		fmt.Println(err.Error())
-		return nil, err
-	}
-	bodyBytes, _ := ioutil.ReadAll(res.Body)
 	var chatRooms []*model.ChatRoom
-	json.Unmarshal(bodyBytes, &chatRooms)
+	// We don't want a specific user's rooms, so we don't provide a username
+	err := client.RPCClient.Call("Server.ListRooms", "", &chatRooms)
+	if err != nil {
+		log.Fatal("Server error:", err)
+	}
 	return chatRooms, nil
 }
 
 func (client *Client) getChatRoomsForUser() ([]*model.ChatRoom, error) {
-	res, err := client.HTTPClient.Get(fmt.Sprintf("http://localhost:8081/chatrooms/list/%s", client.User.UserName))
-	// Wait for the response to complete
-	defer res.Body.Close()
-	if err != nil {
-		fmt.Println(err.Error())
-		return nil, err
-	}
-	bodyBytes, _ := ioutil.ReadAll(res.Body)
 	var chatRooms []*model.ChatRoom
-	json.Unmarshal(bodyBytes, &chatRooms)
+	// We want a specific user's rooms, so we provide a username
+	err := client.RPCClient.Call("Server.ListRooms", client.User.UserName, &chatRooms)
+	if err != nil {
+		log.Fatal("Server error:", err)
+	}
 	return chatRooms, nil
 }
 
 func (client *Client) createChatRoom(roomName string) {
-	// Format the body for serialization
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&roomName)
-
-	resp, err := client.HTTPClient.Post("http://localhost:8081/chatrooms", "application/json; charset=utf-8", b)
-	defer resp.Body.Close()
+	var reply *model.Reply
+	// We want a specific user's rooms, so we provide a username
+	err := client.RPCClient.Call("Server.CreateRoom", roomName, &reply)
 	if err != nil {
-		fmt.Println(err.Error())
-		return
+		log.Fatal("Server error:", err)
 	}
 	fmt.Printf("Successfully created room: %s\n", roomName)
 }
@@ -142,14 +136,12 @@ func (client *Client) joinChatRoom(roomName string) {
 			return
 		}
 	}
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&client.User)
-
-	resp, err := client.HTTPClient.Post(fmt.Sprintf("http://localhost:8081/chatrooms/%s/join", roomName), "application/json; charset=utf-8", b)
-	defer resp.Body.Close()
-	if err != nil || resp.StatusCode != 200 {
+	var reply *model.Reply
+	// We want a specific user's rooms, so we provide a username
+	err := client.RPCClient.Call("Server.JoinRoom", &model.ChatRoomRequest{RoomName: roomName, User: client.User}, &reply)
+	if err != nil {
 		// Failed to join the chat room
-		DisplayErrorDialogWithMessage("Cannot join, max users reached")
+		DisplayErrorDialogWithMessage(err.Error())
 		return
 	}
 	CreateChatTab(client, roomName)
@@ -157,14 +149,12 @@ func (client *Client) joinChatRoom(roomName string) {
 
 func (client *Client) leaveChatRoom(roomName string) {
 	// Format the body for serialization
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&client.User)
-
-	resp, err := client.HTTPClient.Post(fmt.Sprintf("http://localhost:8081/chatrooms/%s/leave", roomName), "application/json; charset=utf-8", b)
-	defer resp.Body.Close()
-	if err != nil || resp.StatusCode != 200 {
+	var reply *model.Reply
+	// We want a specific user's rooms, so we provide a username
+	err := client.RPCClient.Call("Server.LeaveRoom", &model.ChatRoomRequest{RoomName: roomName, User: client.User}, &reply)
+	if err != nil {
 		// Failed to join the chat room
-		DisplayErrorDialogWithMessage("Failed to leave chat room, please try again")
+		DisplayErrorDialogWithMessage(err.Error())
 		return
 	}
 	tab, err := model.GetUIInstance().GetTabByName(roomName)
@@ -181,36 +171,31 @@ func (client *Client) leaveChatRoom(roomName string) {
 
 // UpdateUser updates the server about the user config
 func (client *Client) UpdateUser() error {
-	// Format the body for serialization
-	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(&client.User)
-
-	res, err := client.HTTPClient.Post("http://localhost:8081/users", "application/json; charset=utf-8", b)
-	// Wait for the response to complete
-	defer res.Body.Close()
+	var reply *model.Reply
+	// We want a specific user's rooms, so we provide a username
+	err := client.RPCClient.Call("Server.JoinRoom", &client.User, &reply)
 	if err != nil {
-		fmt.Println(err.Error())
-		return err
+		log.Fatal("Server error:", err)
 	}
 	return nil
 }
 
-func (client *Client) receiveUserUpdate(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the message from the request body")
-		writer.WriteHeader(http.StatusBadRequest)
-	}
-	var user *model.User
-	json.Unmarshal(bodyBytes, &user)
-	client.User = user
+// ReceiveUserUpdate gets updates from the server when user data is updated
+func (s *RPCServer) ReceiveUserUpdate(user *model.User, reply *model.Reply) error {
+	GetClientInstance().User = user
 	model.GetUIInstance().ClientQTInstance.ReloadUI()
+	return nil
 }
 
 func (client *Client) subscribeToServer() {
-	fmt.Println("Starting client message subscription...")
-	http.HandleFunc("/message", client.receiveMessage)
-	http.HandleFunc("/user", client.receiveUserUpdate)
+	fmt.Println("Starting server subscription...")
+	rpc.Register(client.RPCServer)
+	rpc.HandleHTTP()
+	var err error
+	client.RPCClient, err = rpc.DialHTTP("tcp", "localhost:8081")
+	if err != nil {
+		log.Fatal("dialing:", err)
+	}
 	fmt.Println((http.ListenAndServe(fmt.Sprintf(":%d", config.GetInstance().ClientConfig.MessagePort), nil).Error()))
 }
 
@@ -218,10 +203,7 @@ func (client *Client) subscribeToServer() {
 func Create() {
 	fmt.Println("Creating client...")
 	// Create the client
-	client := &Client{
-		HTTPClient: &http.Client{},
-		User:       &model.User{},
-	}
+	client := GetClientInstance()
 
 	// And now we create the GUI
 	chatApp := CreateChatWindow(client)

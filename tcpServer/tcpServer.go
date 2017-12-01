@@ -5,8 +5,8 @@ import (
 	"container/heap"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"net/rpc"
 	"sync"
 	"time"
 
@@ -14,7 +14,6 @@ import (
 
 	"github.com/ShaneWilliamson/golang-chat/config"
 	"github.com/ShaneWilliamson/golang-chat/model"
-	"github.com/gorilla/mux"
 )
 
 const sleepDays int = 7
@@ -41,58 +40,46 @@ func GetServerInstance() *Server {
 
 // ***********************************
 
-func receiveMessage(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the message from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var message *model.Message
-	json.Unmarshal(bodyBytes, &message)
+// ReceiveMessage is an endpoint for receiving client messages
+func (server *Server) ReceiveMessage(message *model.Message, reply *model.Reply) error {
 	room, err := getRoomForName(message.ChatRoomName)
 	if err != nil {
 		fmt.Println(err.Error())
-		writer.WriteHeader(http.StatusForbidden)
-		return
+		return err
 	}
 	if room.GetUser(message.UserName) != nil {
 		go logMessage(message)
 		go broadcastMessage(message)
 	}
 	go HandleChatRoomDestruction()
+	*reply = model.Reply{}
+	return nil
 }
 
-func getLog(writer http.ResponseWriter, req *http.Request) {
-	roomName := mux.Vars(req)["roomName"]
+// GetLog retrieves a specific chatroom log
+func (server *Server) GetLog(roomName string, log *[]*model.Message) error {
 	room, err := getRoomForName(roomName)
 	if err != nil {
 		fmt.Println(err.Error())
-		writer.WriteHeader(http.StatusNotFound)
-		return
+		return err
 	}
-	serializedLog, err := json.Marshal(&room.Log)
-	if err != nil {
-		fmt.Println("Marshalling the log has failed.")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	writer.Write(serializedLog)
+	*log = room.Log
+	return nil
 }
 
-func listRooms(writer http.ResponseWriter, req *http.Request) {
-	server := GetServerInstance()
-	serializedRooms, err := json.Marshal(&server.Rooms)
-	if err != nil {
-		fmt.Println("Marshalling the rooms has failed.")
-		writer.WriteHeader(http.StatusInternalServerError)
+// ListRooms returns a list of all chatrooms to the user
+func (server *Server) ListRooms(userName string, rooms *[]*model.ChatRoom) error {
+	if userName == "" {
+		*rooms = server.Rooms
+		return nil
 	}
-	writer.Write(serializedRooms)
+	*rooms = server.listRoomsForUser(userName)
+	return nil
 }
 
-func listRoomsForUser(writer http.ResponseWriter, req *http.Request) {
-	userName := mux.Vars(req)["userName"]
+func (server *Server) listRoomsForUser(userName string) []*model.ChatRoom {
 	var roomsForUser []*model.ChatRoom
 	found := false
-	server := GetServerInstance()
 	for _, user := range server.Users {
 		if user.UserName == userName {
 			found = true
@@ -103,59 +90,40 @@ func listRoomsForUser(writer http.ResponseWriter, req *http.Request) {
 	if !found {
 		server.Users = append(server.Users, &model.User{UserName: userName})
 	}
-	serializedRooms, err := json.Marshal(&roomsForUser)
-	if err != nil {
-		fmt.Println("Marshalling the rooms has failed.")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	writer.Write(serializedRooms)
+	return roomsForUser
 }
 
-func createRoom(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the room from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var chatRoomName string
-	json.Unmarshal(bodyBytes, &chatRoomName)
-
+// CreateRoom creates a new chatroom
+func (server *Server) CreateRoom(chatRoomName string, reply *model.Reply) error {
 	// If the room already exists, don't create a duplicate, return
 	if _, err := getRoomForName(chatRoomName); err == nil {
-		return
+		return errors.New("Room already exists")
 	}
 	pq := model.GetPriorityQueueInstance()
 	chatRoom := &model.ChatRoom{Users: nil, Name: chatRoomName, MaxUsers: maxUsers, LastUsed: time.Now().UTC()}
 	heap.Push(pq, chatRoom)
-	server := GetServerInstance()
 	server.Rooms = append(server.Rooms, chatRoom)
 	go HandleChatRoomDestruction()
+	*reply = model.Reply{}
+	return nil
 }
 
-func joinRoom(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the room from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	roomName := mux.Vars(req)["roomName"]
-	var ru *model.User
-	json.Unmarshal(bodyBytes, &ru)
-	server := GetServerInstance()
+// JoinRoom joins a chatroom
+func (server *Server) JoinRoom(req *model.ChatRoomRequest, reply *model.Reply) error {
+	roomName := req.RoomName
+	ru := req.User
 	for _, room := range server.Rooms {
 		if room.Name != roomName {
 			continue
 		}
 		// Check, lock, check
 		if len(room.Users) >= room.MaxUsers {
-			writer.WriteHeader(http.StatusForbidden)
-			return
+			return errors.New("Room full, cannot join")
 		}
 		room.Mux.Lock()
 		if len(room.Users) >= room.MaxUsers {
 			room.Mux.Unlock()
-			writer.WriteHeader(http.StatusForbidden)
-			return
+			return errors.New("Room full, cannot join")
 		}
 		// If the user isn't already in the room, add them to the room
 		user := getUser(ru.UserName)
@@ -169,20 +137,15 @@ func joinRoom(writer http.ResponseWriter, req *http.Request) {
 		}
 
 		room.Mux.Unlock()
-		return
+		return nil
 	}
+	return errors.New("Could not find room to join")
 }
 
-func leaveRoom(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the room from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	roomName := mux.Vars(req)["roomName"]
-	var ru *model.User
-	json.Unmarshal(bodyBytes, &ru)
-	server := GetServerInstance()
+// LeaveRoom leaves a chatroom
+func (server *Server) LeaveRoom(req *model.ChatRoomRequest, reply *model.Reply) error {
+	roomName := req.RoomName
+	ru := req.User
 	for _, room := range server.Rooms {
 		if room.Name != roomName {
 			continue
@@ -193,10 +156,9 @@ func leaveRoom(writer http.ResponseWriter, req *http.Request) {
 
 		room.Mux.Lock()
 		// Update chat room
-		if room.RemoveUser(user.UserName) != nil {
+		if err := room.RemoveUser(user.UserName); err != nil {
 			room.Mux.Unlock()
-			writer.WriteHeader(http.StatusForbidden)
-			return
+			return err
 		}
 
 		// Update user
@@ -205,24 +167,20 @@ func leaveRoom(writer http.ResponseWriter, req *http.Request) {
 			// Add the user back to the room, the operation failed
 			room.Users = append(room.Users, user)
 			room.Mux.Unlock()
-			writer.WriteHeader(http.StatusForbidden)
-			return
+			return errors.New("Could not remove room from user")
 		}
 
 		room.Mux.Unlock()
-		return
+		return nil
 	}
+	return nil
 }
 
-func updateUser(writer http.ResponseWriter, req *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error reading the message from the request body")
-		writer.WriteHeader(http.StatusInternalServerError)
-	}
-	var user *model.User
-	json.Unmarshal(bodyBytes, &user)
+// UpdateUser updates a user's info
+func (server *Server) UpdateUser(user *model.User, reply *model.Reply) error {
 	updateUserConfig(user.UserName, user.Config)
+	*reply = model.Reply{}
+	return nil
 }
 
 // ***********************************
@@ -368,7 +326,7 @@ func destroyInactiveRoom(room *model.ChatRoom) {
 		updateClient(user)
 	}
 	server := GetServerInstance()
-	server.RemoveChatRoomFromRooms(room)
+	server.removeChatRoomFromRooms(room)
 }
 
 func updateClient(user *model.User) {
@@ -378,8 +336,8 @@ func updateClient(user *model.User) {
 	client.Post(fmt.Sprintf("http://localhost:%d/user", user.Config.MessagePort), "application/json; charset=utf-8", b)
 }
 
-// RemoveChatRoomFromRooms removes the desired room from the server's array of rooms
-func (server *Server) RemoveChatRoomFromRooms(room *model.ChatRoom) error {
+// removeChatRoomFromRooms removes the desired room from the server's array of rooms
+func (server *Server) removeChatRoomFromRooms(room *model.ChatRoom) error {
 	for i, r := range server.Rooms {
 		if r.Name == room.Name {
 			server.Rooms[len(server.Rooms)-1], server.Rooms[i] = server.Rooms[i], server.Rooms[len(server.Rooms)-1]
@@ -395,17 +353,10 @@ func Create() {
 	// create the server
 	fmt.Println("Creating Server...")
 
-	// Register our HTTP routes
-	rtr := mux.NewRouter()
-	rtr.HandleFunc("/message", receiveMessage).Methods("POST")
-	rtr.HandleFunc("/log/{roomName}", getLog).Methods("GET")
-	rtr.HandleFunc("/users", updateUser).Methods("POST")
-	rtr.HandleFunc("/chatrooms", createRoom).Methods("POST")
-	rtr.HandleFunc("/chatrooms/list", listRooms).Methods("GET")
-	rtr.HandleFunc("/chatrooms/list/{userName}", listRoomsForUser).Methods("GET")
-	rtr.HandleFunc("/chatrooms/{roomName}/join", joinRoom).Methods("POST")
-	rtr.HandleFunc("/chatrooms/{roomName}/leave", leaveRoom).Methods("POST")
-	http.Handle("/", rtr)
+	// register for rpc
+	server := GetServerInstance()
+	rpc.Register(server)
+	rpc.HandleHTTP()
 
 	start()
 }
